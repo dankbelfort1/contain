@@ -45,6 +45,16 @@ if (!source.includes(BAD)) {
   process.exit(0);
 }
 
+if (!source.includes(IMPORT_LINE)) {
+  // Rewriting only the call site would leave pathToFileURL undefined at runtime, which
+  // fails later and further from the cause than not patching at all.
+  console.warn(
+    `${TARGET} does not contain the expected import line, so nothing was changed. ` +
+      "Kysely has changed shape; update this script before relying on it.",
+  );
+  process.exit(0);
+}
+
 const patched = source
   .replace(IMPORT_LINE, `${IMPORT_LINE}\nimport { pathToFileURL } from 'node:url';`)
   .replace(BAD, GOOD);
