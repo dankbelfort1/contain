@@ -123,24 +123,60 @@ export async function revokeCredential(params: RevokeParams): Promise<RevokeReco
     },
   );
 
-  // The 202 tells us nothing, so go and look.
+  // 202 is the documented acceptance. Anything else - a 422 validation failure, a
+  // 500, a rate limit - means the request was not accepted, and reporting it as an
+  // attempted revocation would overstate what happened.
+  const accepted = status === 202;
+
+  // Even an accepted request proves nothing, because 202 is returned for credentials
+  // that never existed. So go and look either way.
   const after = await verifyFinding(finding, sandbox);
+
+  // Confirmation requires two things: we saw the credential working before, and we
+  // saw it stop. A credential that was already DEAD or UNKNOWN beforehand gives us no
+  // transition to observe, so calling that "confirmed" would be claiming evidence we
+  // do not have.
+  const observedTransition = params.statusBefore === "LIVE" && after.status === "DEAD";
 
   const record: RevokeRecord = {
     ...base,
     attempted: true,
     httpStatus: status,
     statusAfter: after.status,
-    confirmed: after.status === "DEAD",
-    ...(after.status !== "DEAD"
-      ? {
-          note:
-            "GitHub accepted the request but the credential still authenticates. " +
-            "Do not treat this as revoked.",
-        }
-      : {}),
+    confirmed: accepted && observedTransition,
+    ...(noteFor(accepted, params.statusBefore, after.status, status)),
   };
 
   registry.markConsumed(grant.token, record);
   return record;
+}
+
+function noteFor(
+  accepted: boolean,
+  before: SecretStatus,
+  after: SecretStatus,
+  httpStatus: number,
+): { note?: string } {
+  if (!accepted) {
+    return {
+      note:
+        `The provider did not accept the request (HTTP ${httpStatus}). ` +
+        "Nothing was revoked. Retry or revoke it by hand.",
+    };
+  }
+  if (after !== "DEAD") {
+    return {
+      note:
+        "The provider accepted the request but the credential still authenticates. " +
+        "Do not treat this as revoked.",
+    };
+  }
+  if (before !== "LIVE") {
+    return {
+      note:
+        `The credential reads DEAD now, but it was ${before} before the request, so ` +
+        "there was no transition to observe and this is not proof the call did anything.",
+    };
+  }
+  return {};
 }

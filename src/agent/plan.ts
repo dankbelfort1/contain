@@ -39,10 +39,15 @@ export interface Plan {
     unknown: number;
     /** How many items cannot proceed without a human. */
     awaitingApproval: number;
+    /** How many items a person has to pick up by hand. */
+    needsManualReview: number;
   };
 }
 
 const SEVERITY_ORDER: Record<Severity, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+
+/** Actions that touch a provider irreversibly. Always gated, whatever a policy says. */
+const DESTRUCTIVE_ACTIONS = new Set<RemediationAction>(["revoke_and_rotate"]);
 
 /**
  * Turn findings and their verification results into an ordered plan.
@@ -72,7 +77,10 @@ export function buildPlan(
       action: rule.action,
       reason: buildReason(rule, finding, record),
       blastRadius: record?.blastRadius.headline ?? "Not assessed.",
-      requiresApproval: rule.requiresApproval,
+      // Not read straight from the rule. A caller-supplied policy could otherwise
+      // set requiresApproval false on a destructive action and quietly remove the
+      // gate, which is the one thing no configuration is allowed to do.
+      requiresApproval: rule.requiresApproval || DESTRUCTIVE_ACTIONS.has(rule.action),
       severity: record?.blastRadius.worstSeverity ?? "low",
       ruleId: rule.id,
     };
@@ -88,6 +96,7 @@ export function buildPlan(
       dead: items.filter((i) => i.status === "DEAD").length,
       unknown: items.filter((i) => i.status === "UNKNOWN" || i.status === "UNVERIFIED").length,
       awaitingApproval: items.filter((i) => i.requiresApproval).length,
+      needsManualReview: items.filter((i) => i.action === "manual_review").length,
     },
   };
 }

@@ -228,6 +228,41 @@ describe("revoke with a valid approval", () => {
     expect(record.note).toContain("Do not treat this as revoked");
   });
 
+  it("does not report an unaccepted request as an attempt that worked", async () => {
+    // 202 is the documented acceptance. A 422 or a 500 means nothing was revoked, and
+    // saying otherwise would overstate what happened.
+    post = vi.fn(async () => ({ status: 422 })) as never;
+    const record = await revokeCredential({
+      finding: finding(),
+      statusBefore: "LIVE",
+      approvalToken: allow().token,
+      registry,
+      sandbox: sandboxReporting("LIVE"),
+      post,
+    });
+
+    expect(record.confirmed).toBe(false);
+    expect(record.note).toContain("did not accept");
+    expect(record.note).toContain("422");
+  });
+
+  it("does not claim confirmation without a transition to observe", async () => {
+    // The credential was already dead before the call, so a dead reading afterwards
+    // is not evidence that this request did anything.
+    const record = await revokeCredential({
+      finding: finding(),
+      statusBefore: "UNKNOWN",
+      approvalToken: allow().token,
+      registry,
+      sandbox: sandboxReporting("DEAD"),
+      post,
+    });
+
+    expect(record.statusAfter).toBe("DEAD");
+    expect(record.confirmed).toBe(false);
+    expect(record.note).toContain("no transition to observe");
+  });
+
   it("is idempotent: a retry does not fire a second time", async () => {
     const token = allow().token;
     const args = {

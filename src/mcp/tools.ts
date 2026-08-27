@@ -31,6 +31,20 @@ export interface ToolDeps {
   /** Who approvals are attributed to in the audit trail. */
   operator: string;
   dryRun: boolean;
+  /**
+   * Whether this server sits behind a harness that gates destructive tools itself.
+   *
+   * Off by default, and it has to stay that way. When it is off, revoke_credential
+   * requires an approval token bound to the credential, which is the only protection
+   * a standalone server has: the HTTP endpoint does not enforce the destructive
+   * annotation, so anything that can reach loopback could otherwise revoke a
+   * discovered credential with no human involved.
+   *
+   * Turn it on only when a harness like TrueForge is configured to require approval
+   * for destructive tools, because then reaching this handler already means a human
+   * allowed the call. Switching it on without that is removing the gate.
+   */
+  harnessGatesDestructiveTools?: boolean | undefined;
   /** Injectable for tests, so the destructive path can be exercised without firing. */
   post?: RevokePoster | undefined;
 }
@@ -172,7 +186,11 @@ export const TOOLS: readonly ToolDefinition[] = [
       findingId: z.string().describe("Finding id of the credential to revoke."),
       approvalToken: z
         .string()
-        .describe("Approval token granted by a human for this specific credential."),
+        .optional()
+        .describe(
+          "Approval token, when this server is driven by something that issues them. " +
+            "Omit it under a harness that gates destructive tools itself.",
+        ),
     },
     async handler(args, deps) {
       const findingId = String(args["findingId"]);
@@ -181,11 +199,48 @@ export const TOOLS: readonly ToolDefinition[] = [
 
       const verification = deps.state.verification(findingId);
 
+      // Two callers, two gates, and they are not interchangeable.
+      //
+      // The CLI and the UI issue an approval bound to this credential and pass the
+      // token. That binding is what stops one approval being used on a different key.
+      //
+      // A harness that gates destructive tools reaches this handler only after its own
+      // human approval, and nothing on that path issues our token. But the HTTP
+      // endpoint cannot tell a gating harness from any other local caller, so a
+      // missing token is only treated as harness approval when the operator has said
+      // that is the deployment. Otherwise it is refused, because inferring approval
+      // from its absence is not a gate.
+      const suppliedToken = args["approvalToken"];
+      const hasToken = typeof suppliedToken === "string" && suppliedToken.length > 0;
+
+      if (!hasToken && deps.harnessGatesDestructiveTools !== true) {
+        const message =
+          "Human approval required. This action may affect production. " +
+          "No approval token was supplied, and this server is not configured to sit " +
+          "behind a harness that gates destructive tools.";
+        deps.state.audit.record({
+          type: "action.refused",
+          at: new Date().toISOString(),
+          findingId,
+          reason: message,
+        });
+        throw new ApprovalError(message);
+      }
+
+      const approvalToken = hasToken
+        ? suppliedToken
+        : deps.state.approvals.grant({
+            findingId,
+            secret: finding.secret,
+            decision: "allow",
+            grantedBy: `${deps.operator} (via harness tool approval)`,
+          }).token;
+
       try {
         const record = await revokeCredential({
           finding,
           statusBefore: verification?.status ?? "UNVERIFIED",
-          approvalToken: String(args["approvalToken"]),
+          approvalToken,
           registry: deps.state.approvals,
           sandbox: deps.sandbox,
           dryRun: deps.dryRun,

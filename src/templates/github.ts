@@ -16,6 +16,18 @@ const SOURCE = String.raw`
 'use strict';
 
 exports.run = async (params) => {
+  // Refresh tokens are not bearer credentials for the REST API. They would return 401
+  // here whether or not they are still usable, and reporting that as DEAD would leave
+  // a working credential in place.
+  if (String(params.token).startsWith('ghr_')) {
+    return {
+      status: 'UNKNOWN',
+      capabilities: [],
+      facts: { tokenKind: 'refresh' },
+      reason: 'GitHub App refresh token. It cannot be tested against /user, so this needs checking by hand.',
+    };
+  }
+
   const response = await fetch('https://api.github.com/user', {
     method: 'GET',
     headers: {

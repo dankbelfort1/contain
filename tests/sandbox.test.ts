@@ -73,6 +73,83 @@ describe("LocalSandbox", () => {
     expect(result.ok).toBe(false);
   });
 
+  it("blocks a positional connection to a raw IP, which skips DNS entirely", async () => {
+    // The sharpest form of the bypass. The DNS hook never fires for a literal address,
+    // so before the connect guard understood positional arguments this reached the
+    // network unchecked.
+    const result = await sandbox.run({
+      templateSource: `exports.run = async (p) => {
+        const net = require('node:net');
+        return await new Promise((resolve, reject) => {
+          const s = net.connect(p.port, '127.0.0.1', () => resolve({ leaked: true }));
+          s.on('error', reject);
+        });
+      };`,
+      params: { port },
+      allowHosts: [],
+      timeoutMs: 15_000,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.value).toBeUndefined();
+  });
+
+  it("blocks a positional net.connect(port, host)", async () => {
+    // Reading only args[0].host left this form unchecked, so a template could reach
+    // any host by calling net.connect(443, 'somewhere.else').
+    const result = await sandbox.run({
+      templateSource: `exports.run = async () => {
+        const net = require('node:net');
+        return await new Promise((resolve, reject) => {
+          const s = net.connect(80, 'example.com', () => resolve({ leaked: true }));
+          s.on('error', reject);
+        });
+      };`,
+      params: {},
+      allowHosts: ["localhost"],
+      timeoutMs: 15_000,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.value).toBeUndefined();
+  });
+
+  it("blocks a connection with no host, which Node would send to localhost", async () => {
+    const result = await sandbox.run({
+      templateSource: `exports.run = async (p) => {
+        const net = require('node:net');
+        return await new Promise((resolve, reject) => {
+          const s = net.connect({ port: p.port }, () => resolve({ leaked: true }));
+          s.on('error', reject);
+        });
+      };`,
+      params: { port },
+      allowHosts: [],
+      timeoutMs: 15_000,
+    });
+
+    expect(result.ok).toBe(false);
+  });
+
+  it("blocks IPC and unix socket connections outright", async () => {
+    // A verification template has no legitimate use for IPC, and a path carries no
+    // host we could check against the allowlist.
+    const result = await sandbox.run({
+      templateSource: `exports.run = async () => {
+        const net = require('node:net');
+        return await new Promise((resolve, reject) => {
+          const s = net.connect('\\.\pipe\anything', () => resolve({ leaked: true }));
+          s.on('error', reject);
+        });
+      };`,
+      params: {},
+      allowHosts: ["localhost"],
+      timeoutMs: 15_000,
+    });
+
+    expect(result.ok).toBe(false);
+  });
+
   it("kills a template that overruns its timeout", async () => {
     const result = await sandbox.run({
       // A pending promise alone would let Node exit with an empty event loop, so

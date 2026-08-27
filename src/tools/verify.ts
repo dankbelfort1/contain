@@ -21,6 +21,8 @@ const outcomeSchema = z.object({
   principal: z.string().optional(),
   capabilities: z.array(z.string()).default([]),
   facts: z.record(z.string(), z.unknown()).default({}),
+  /** Why the template could not decide, when it could not. */
+  reason: z.string().optional(),
 });
 
 export interface VerificationRecord {
@@ -100,6 +102,7 @@ export async function verifyFinding(
     blastRadius: describeBlastRadius(finding.provider, outcome),
     sandboxKind: result.sandboxKind,
     elapsedMs: result.elapsedMs,
+    ...(parsed.data.reason !== undefined ? { reason: parsed.data.reason } : {}),
   };
 }
 

@@ -17,12 +17,20 @@ async function main(): Promise<void> {
     sandbox: new LocalSandbox(),
     operator: process.env["CONTAIN_OPERATOR"] ?? "operator",
     dryRun: process.env["CONTAIN_DRY_RUN"] === "true",
+    // Only set this when the harness connecting to this server is configured to
+    // require approval for destructive tools. Setting it otherwise removes the gate.
+    harnessGatesDestructiveTools: process.env["CONTAIN_HARNESS_GATES_DESTRUCTIVE"] === "true",
   };
 
   await startHttpServer(deps, port);
 
   console.log(`ContAIn MCP server listening on http://localhost:${port}/mcp`);
   console.log(`dry run: ${deps.dryRun}`);
+  console.log(
+    deps.harnessGatesDestructiveTools
+      ? "approval:  delegated to the harness (CONTAIN_HARNESS_GATES_DESTRUCTIVE=true)"
+      : "approval:  an approval token bound to the credential is required",
+  );
   console.log("\ntools:");
   for (const tool of TOOLS) {
     const gate = tool.annotations.destructiveHint ? "DESTRUCTIVE, needs approval" : "read-only";

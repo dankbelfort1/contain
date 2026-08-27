@@ -62,6 +62,23 @@ describe("policy", () => {
     }
   });
 
+  it("gates a destructive action even when a policy says otherwise", () => {
+    // A caller-supplied policy must not be able to remove the gate. This is the one
+    // thing no configuration is allowed to do.
+    const permissive = [
+      {
+        id: "reckless",
+        when: "LIVE" as const,
+        action: "revoke_and_rotate" as const,
+        rationale: "kill it",
+        requiresApproval: false,
+      },
+    ];
+    const plan = buildPlan([finding("live-1")], [record("live-1", "LIVE")], permissive);
+    expect(plan.items[0]?.action).toBe("revoke_and_rotate");
+    expect(plan.items[0]?.requiresApproval).toBe(true);
+  });
+
   it("falls back to manual review for an unmapped status, not to an action", () => {
     const fallback = ruleFor("LIVE", []);
     expect(fallback.action).toBe("manual_review");
@@ -107,7 +124,14 @@ describe("buildPlan", () => {
 
   it("summarises what needs a human", () => {
     const plan = buildPlan(findings, records);
-    expect(plan.summary).toEqual({ total: 3, live: 1, dead: 1, unknown: 1, awaitingApproval: 1 });
+    expect(plan.summary).toEqual({
+      total: 3,
+      live: 1,
+      dead: 1,
+      unknown: 1,
+      awaitingApproval: 1,
+      needsManualReview: 1,
+    });
   });
 
   it("treats a finding with no verification record as unverified, not as safe", () => {
@@ -144,7 +168,7 @@ describe("audit trail", () => {
   it.each([
     ["ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789"],
     ["github_pat_11ABCDEFG0abcdefghijklmnopqrstuvwxyz"],
-    ["AIzaSyDb2Cr6pX21OYVaWlWfS5xOreMfN9sS7Y"],
+    ["AIzaSykoVl2RyyXmfBWI469zMVGIvi1wWHKIm6H"],
   ])("detects %s as credential-shaped", (value) => {
     expect(() => assertNoSecrets(`{"x":"${value}"}`)).toThrow(AuditLeakError);
   });

@@ -59,14 +59,52 @@ dns.lookup = function guardedLookup(hostname, options, callback) {
 };
 
 const realConnect = net.Socket.prototype.connect;
+
+/**
+ * Normalise every form of Socket.connect into a destination we can check.
+ *
+ * Node accepts connect(options), connect(port, host) and connect(path) for IPC. Reading
+ * only args[0].host, as an earlier version did, left the positional and IPC forms
+ * unchecked, so a template could reach any host by calling net.connect(443, 'evil.com').
+ * Anything we cannot positively identify is refused rather than passed through.
+ */
+function destinationOf(args) {
+  const first = args[0];
+
+  if (typeof first === 'object' && first !== null) {
+    // IPC has no host to check and no legitimate use in a verification template.
+    if (typeof first.path === 'string') return { kind: 'ipc', value: first.path };
+    // A missing host defaults to localhost in Node, so treat it as such explicitly.
+    return { kind: 'tcp', value: typeof first.host === 'string' ? first.host : 'localhost' };
+  }
+
+  if (typeof first === 'number' || (typeof first === 'string' && /^\d+$/.test(first))) {
+    const second = args[1];
+    return { kind: 'tcp', value: typeof second === 'string' ? second : 'localhost' };
+  }
+
+  if (typeof first === 'string') return { kind: 'ipc', value: first };
+
+  return { kind: 'unknown', value: String(first) };
+}
+
 net.Socket.prototype.connect = function guardedConnect(...args) {
-  const opts = args[0];
-  const host = typeof opts === 'object' && opts !== null ? opts.host : undefined;
-  if (host && !allowedIps.has(host) && !allowedHosts.has(host)) {
+  const destination = destinationOf(args);
+
+  if (destination.kind !== 'tcp') {
+    throw new EgressBlocked(
+      'connect blocked: ' + destination.kind + ' connections are not permitted (' +
+        destination.value + ')',
+    );
+  }
+
+  const host = destination.value;
+  if (!allowedIps.has(host) && !allowedHosts.has(host)) {
     throw new EgressBlocked(
       'connect blocked to ' + host + '; allowlist=' + JSON.stringify([...allowedHosts]),
     );
   }
+
   return realConnect.apply(this, args);
 };
 
