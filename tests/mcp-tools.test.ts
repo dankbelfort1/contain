@@ -179,7 +179,21 @@ describe("the destructive tool refuses without approval", () => {
     });
   });
 
+  it("refuses a tokenless call when no gating harness is declared", async () => {
+    // The HTTP endpoint cannot tell a gating harness from any other local caller, so
+    // treating a missing token as approval would let anything on loopback revoke a
+    // credential with no human involved.
+    deps.sandbox = sandboxReporting("LIVE");
+    await tool("verify_credential").handler({ findingId: "f1" }, deps);
+
+    await expect(tool("revoke_credential").handler({ findingId: "f1" }, deps)).rejects.toThrow(
+      /Human approval required/,
+    );
+    expect(post).not.toHaveBeenCalled();
+  });
+
   it("works under a harness that gates the tool itself, with no token supplied", async () => {
+    deps.harnessGatesDestructiveTools = true;
     // Nothing on the harness path issues our token: the harness's own approval is what
     // let the call through. Requiring a token here refused every approved revocation.
     deps.sandbox = sandboxReporting("LIVE");

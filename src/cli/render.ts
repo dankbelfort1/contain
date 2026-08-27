@@ -84,10 +84,29 @@ export function safe(text: string): string {
     .split("")
     .filter((ch) => {
       const cp = ch.codePointAt(0) ?? 0;
-      return cp >= 32 && cp !== 127;
+      if (cp < 32 || cp === 127) return false; // C0 controls and DEL
+      if (cp >= 0x80 && cp <= 0x9f) return false; // C1 controls
+      if (BIDI_AND_INVISIBLE.has(cp)) return false;
+      return true;
     })
     .join("");
 }
+
+/**
+ * Bidirectional overrides and invisible characters.
+ *
+ * Stripping the C0 range alone is not enough. These are printable by the usual test but
+ * reorder what a terminal displays, so a commit message can be written to render as
+ * something other than what it contains. That is the Trojan Source trick, and the
+ * approval panel is exactly the place it would pay off.
+ */
+const BIDI_AND_INVISIBLE = new Set([
+  0x200b, 0x200c, 0x200d, // zero width space, non-joiner, joiner
+  0x200e, 0x200f, // left-to-right and right-to-left marks
+  0x202a, 0x202b, 0x202c, 0x202d, 0x202e, // embedding and override
+  0x2066, 0x2067, 0x2068, 0x2069, // isolates
+  0xfeff, // zero width no-break space
+]);
 
 /** Wrap prose to the panel width, preserving whole words. */
 export function wrap(text: string, indent = 0, width = WIDTH): string[] {

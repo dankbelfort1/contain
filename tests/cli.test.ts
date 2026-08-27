@@ -174,6 +174,18 @@ describe("render helpers", () => {
     expect(cleaned).toContain("innocent");
   });
 
+  it("strips bidirectional overrides and invisible characters", () => {
+    // Stripping the C0 range alone is not enough. These reorder what a terminal
+    // displays, so a commit message can render as something other than it contains.
+    const trojan = "revoke\u202Enothing\u202C\u200Bhidden\uFEFF";
+    const cleaned = safe(trojan);
+
+    for (const cp of ["\u202E", "\u202C", "\u200B", "\uFEFF"]) {
+      expect(cleaned).not.toContain(cp);
+    }
+    expect(cleaned).toBe("revokenothinghidden");
+  });
+
   it("leaves ordinary text alone", () => {
     expect(safe('Add deploy config for "staging" - v2')).toBe('Add deploy config for "staging" - v2');
   });
