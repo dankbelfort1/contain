@@ -92,7 +92,10 @@ export function describeGitHubBlastRadius(outcome: VerificationOutcome): BlastRa
     headline: buildHeadline(outcome, capabilities),
     capabilities,
     reach: describeReach(outcome),
-    worstSeverity: capabilities[0]?.severity ?? "low",
+    // A live credential whose permissions we cannot see is not low risk, it is
+    // unmeasured. Reporting "low" would sort it below credentials we know less
+    // about and bury it at the bottom of the plan.
+    worstSeverity: capabilities[0]?.severity ?? "high",
   };
 }
 

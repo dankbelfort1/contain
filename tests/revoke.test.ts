@@ -286,6 +286,72 @@ describe("revoke with a valid approval", () => {
   });
 });
 
+describe("concurrent use of one approval", () => {
+  it("fires once when two revocations race on the same token", async () => {
+    // Checking "already spent" and then acting are two steps with an await between
+    // them, so both callers used to pass the check and both fired an irreversible
+    // request.
+    const registry2 = new ApprovalRegistry();
+    const grant = registry2.grant({
+      findingId: finding().id,
+      secret: LIVE_SECRET,
+      decision: "allow",
+      grantedBy: "deep",
+    });
+    const slowPost = vi.fn(async () => {
+      await new Promise((r) => setTimeout(r, 30));
+      return { status: 202 };
+    });
+
+    const args = {
+      finding: finding(),
+      statusBefore: "LIVE" as const,
+      approvalToken: grant.token,
+      registry: registry2,
+      sandbox: sandboxReporting("DEAD"),
+      post: slowPost as never,
+    };
+
+    const results = await Promise.allSettled([
+      revokeCredential(args),
+      revokeCredential(args),
+      revokeCredential(args),
+    ]);
+
+    expect(slowPost).toHaveBeenCalledTimes(1);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+  });
+
+  it("releases the approval when the request never landed", async () => {
+    // A failed request has not spent the approval, so a retry should not need a
+    // fresh human decision.
+    const registry2 = new ApprovalRegistry();
+    const grant = registry2.grant({
+      findingId: finding().id,
+      secret: LIVE_SECRET,
+      decision: "allow",
+      grantedBy: "deep",
+    });
+    const failing = vi.fn(async () => {
+      throw new Error("ECONNRESET");
+    });
+    const args = {
+      finding: finding(),
+      statusBefore: "LIVE" as const,
+      approvalToken: grant.token,
+      registry: registry2,
+      sandbox: sandboxReporting("DEAD"),
+    };
+
+    await expect(revokeCredential({ ...args, post: failing as never })).rejects.toThrow(
+      /ECONNRESET/,
+    );
+
+    const retry = await revokeCredential({ ...args, post: post as never });
+    expect(retry.attempted).toBe(true);
+  });
+});
+
 describe("dry run", () => {
   it("never sends a request", async () => {
     // Replay runs in dry-run mode. Replaying a past run must not destroy a

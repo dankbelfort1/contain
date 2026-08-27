@@ -72,6 +72,17 @@ export function padVisible(text: string, width: number): string {
 }
 
 /**
+ * Cut plain text to a visible width, marking that it was cut.
+ *
+ * The approval panel draws a border, and an over-long value used to run straight
+ * through it. A gate that looks broken is a gate people stop reading.
+ */
+export function truncate(text: string, width: number): string {
+  if (text.length <= width) return text;
+  return text.slice(0, Math.max(0, width - 1)) + "…";
+}
+
+/**
  * Strip control characters from untrusted text before printing it.
  *
  * Commit messages, author names and file paths come from the repository being scanned,
@@ -181,11 +192,13 @@ export function renderApprovalGate(item: PlanItem): string {
   out.push(red(bold("│")) + "  This action may affect production.".padEnd(WIDTH - 2) + red(bold("│")));
   out.push(red(bold("├" + "─".repeat(WIDTH - 2) + "┤")));
 
+  // Width available for a value: panel minus border, indent, and the label column.
+  const valueWidth = WIDTH - 2 - 2 - 12;
   const rows = [
-    ["credential", safe(item.maskedSecret)],
-    ["found at", safe(item.location)],
-    ["status", safe(item.status)],
-    ["action", safe(item.action)],
+    ["credential", truncate(safe(item.maskedSecret), valueWidth)],
+    ["found at", truncate(safe(item.location), valueWidth)],
+    ["status", truncate(safe(item.status), valueWidth)],
+    ["action", truncate(safe(item.action), valueWidth)],
   ];
   for (const [label, value] of rows) {
     const cell = `  ${dim((label ?? "").padEnd(12))}${value ?? ""}`;

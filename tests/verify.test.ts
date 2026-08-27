@@ -40,7 +40,11 @@ describe("verification templates are read-only", () => {
   it.each(allTemplates().map((t) => [t.id, t] as const))(
     "%s issues only read-only HTTP methods",
     (_id, template) => {
-      const methods = [...template.source.matchAll(/method:\s*['"]([A-Z]+)['"]/g)].map((m) => m[1]);
+      // Case-insensitive. fetch treats method as case-insensitive too, so an
+      // uppercase-only check would have waved through method: 'post'.
+      const methods = [...template.source.matchAll(/method:\s*['"]([A-Za-z]+)['"]/g)].map(
+        (m) => (m[1] as string).toUpperCase(),
+      );
       expect(methods.length).toBeGreaterThan(0);
       for (const method of methods) {
         expect(READ_ONLY_METHODS).toContain(method);
@@ -51,7 +55,7 @@ describe("verification templates are read-only", () => {
   it.each(allTemplates().map((t) => [t.id, t] as const))(
     "%s never names a mutating method",
     (_id, template) => {
-      expect(template.source).not.toMatch(/['"](POST|PUT|PATCH|DELETE)['"]/);
+      expect(template.source).not.toMatch(/['"](POST|PUT|PATCH|DELETE)['"]/i);
     },
   );
 

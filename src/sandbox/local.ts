@@ -6,7 +6,7 @@
  * enforces the same egress allowlist and the same timeout, so a template behaves
  * identically either way.
  */
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -65,16 +65,37 @@ function runChild(
   timeoutMs: number,
 ): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    execFile(
+    const child = execFile(
       process.execPath,
       ["--require", join(dir, "guard.cjs"), join(dir, "entry.cjs")],
       { cwd: dir, env, timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024 },
       (err, stdout, stderr) => {
+        clearTimeout(reaper);
         if (err) reject(Object.assign(err, { stderr }));
         else resolve({ stdout, stderr });
       },
     );
+
+    // execFile's own timeout signals the child but leaves anything it spawned running,
+    // so a template that starts a subprocess could outlive the sandbox that was
+    // supposed to bound it. Reap the whole tree slightly after execFile gives up.
+    const reaper = setTimeout(() => killTree(child.pid), timeoutMs + 500);
+    reaper.unref();
   });
+}
+
+function killTree(pid: number | undefined): void {
+  if (pid === undefined) return;
+  try {
+    if (process.platform === "win32") {
+      // Windows has no process groups to signal, so ask the OS to walk the tree.
+      execFileSync("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore" });
+    } else {
+      process.kill(-pid, "SIGKILL");
+    }
+  } catch {
+    // Already gone, which is the outcome we wanted.
+  }
 }
 
 /** Extract the single marked result line the entry script prints. */

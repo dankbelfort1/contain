@@ -11,7 +11,7 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 const VERSION = "8.30.1";
 const BASE = `https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}`;
@@ -75,12 +75,20 @@ async function main() {
   const binary = join(binDir, process.platform === "win32" ? "gitleaks.exe" : "gitleaks");
 
   if (existsSync(binary)) {
-    const installed = execFileSync(binary, ["version"], { encoding: "utf8" }).trim();
+    // A truncated or corrupt binary throws here. Treat that as "needs replacing"
+    // rather than letting it abort the install, because the state that most needs
+    // repairing would otherwise be the one state the repair tool refuses to handle.
+    let installed;
+    try {
+      installed = execFileSync(binary, ["version"], { encoding: "utf8" }).trim();
+    } catch {
+      console.log(`Existing ${binary} does not run. Replacing it.`);
+    }
     if (installed === VERSION) {
       console.log(`gitleaks ${VERSION} already present at ${binary}`);
       return;
     }
-    console.log(`Replacing gitleaks ${installed} with ${VERSION}`);
+    if (installed) console.log(`Replacing gitleaks ${installed} with ${VERSION}`);
   }
 
   const asset = assetName();
@@ -94,10 +102,11 @@ async function main() {
   console.log("Checksum verified");
 
   mkdirSync(binDir, { recursive: true });
-  const archivePath = join(binDir, asset);
+  // Unique per process, so two installs running at once cannot unpack over each other.
+  const archivePath = join(binDir, `${process.pid}-${asset}`);
   writeFileSync(archivePath, archive);
   try {
-    extract(asset, binDir);
+    extract(basename(archivePath), binDir);
   } finally {
     rmSync(archivePath, { force: true });
   }

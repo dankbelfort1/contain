@@ -53,6 +53,8 @@ export function fingerprint(secret: string): string {
 export class ApprovalRegistry {
   readonly #grants = new Map<string, ApprovalGrant>();
   readonly #consumed = new Map<string, ConsumedGrant>();
+  /** Tokens currently being spent, so two callers cannot both pass the check. */
+  readonly #inFlight = new Set<string>();
 
   /** Record a human decision. Only an "allow" produces a usable token. */
   grant(params: {
@@ -108,6 +110,27 @@ export class ApprovalRegistry {
     return this.#consumed.get(token) as ConsumedGrant<T> | undefined;
   }
 
+  /**
+   * Claim a grant before doing anything irreversible with it.
+   *
+   * Checking "already consumed" and then acting is two steps, and JavaScript will
+   * happily interleave an await between them. Two concurrent revocations for the same
+   * approval both passed the check and both fired. Claiming is a single synchronous
+   * step, so only one caller can win.
+   *
+   * @returns true if this caller now owns the grant.
+   */
+  claim(token: string): boolean {
+    if (this.#consumed.has(token) || this.#inFlight.has(token)) return false;
+    this.#inFlight.add(token);
+    return true;
+  }
+
+  /** Release a claim that did not complete, so the action can be retried. */
+  release(token: string): void {
+    this.#inFlight.delete(token);
+  }
+
   /** Mark a grant spent and record what it produced. */
   markConsumed<T>(token: string, outcome: T): void {
     const grant = this.#grants.get(token);
@@ -117,6 +140,7 @@ export class ApprovalRegistry {
       consumedAt: new Date().toISOString(),
       outcome,
     });
+    this.#inFlight.delete(token);
   }
 
   /** Every decision made this run, for the audit trail. */

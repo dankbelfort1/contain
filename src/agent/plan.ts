@@ -104,7 +104,12 @@ export function buildPlan(
 function worstFirst(a: PlanItem, b: PlanItem): number {
   // A live credential always comes before a dead one. Severity only breaks ties
   // within the same status.
-  const liveRank = (i: PlanItem) => (i.status === "LIVE" ? 0 : i.status === "UNKNOWN" ? 1 : 2);
+  //
+  // UNVERIFIED ranks with UNKNOWN rather than with DEAD. Something never checked is
+  // not evidence of safety, and sorting it next to credentials known to be harmless
+  // buries it where nobody looks.
+  const liveRank = (i: PlanItem) =>
+    i.status === "LIVE" ? 0 : i.status === "UNKNOWN" || i.status === "UNVERIFIED" ? 1 : 2;
   if (liveRank(a) !== liveRank(b)) return liveRank(a) - liveRank(b);
   if (a.severity !== b.severity) return SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity];
   return a.findingId < b.findingId ? -1 : a.findingId > b.findingId ? 1 : 0;

@@ -1,3 +1,6 @@
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildPlan } from "../src/agent/plan.js";
 import { AuditLeakError, AuditTrail, assertNoSecrets } from "../src/harness/audit.js";
@@ -139,6 +142,16 @@ describe("buildPlan", () => {
     expect(plan.items[0]?.status).toBe("UNVERIFIED");
     expect(plan.items[0]?.action).toBe("manual_review");
   });
+
+  it("ranks an unverified credential above a dead one", () => {
+    // Never checked is not evidence of safety. Sorting it beside credentials known
+    // to be harmless buries it where nobody looks.
+    const plan = buildPlan(
+      [finding("dead-1"), finding("never-checked")],
+      [record("dead-1", "DEAD")],
+    );
+    expect(plan.items[0]?.findingId).toBe("never-checked");
+  });
 });
 
 describe("audit trail", () => {
@@ -191,6 +204,38 @@ describe("audit trail", () => {
       "verification.completed",
       "run.completed",
     ]);
+  });
+
+  it("hands out a copy, so a caller cannot edit a recorded event", () => {
+    // Validation happens on the way in. Returning the live array would let a caller
+    // put a credential into an event afterwards, past the check.
+    const trail = new AuditTrail();
+    trail.recordFinding(finding("f1"));
+
+    const events = trail.events() as { maskedSecret?: string }[];
+    events[0]!.maskedSecret = REAL_LOOKING_SECRET;
+
+    expect(trail.toJSONL()).not.toContain(REAL_LOOKING_SECRET);
+  });
+
+  it("appends only new events when saved twice", async () => {
+    // save() appends, so writing the whole trail each time duplicated everything and
+    // a run saved twice read as though it had happened twice.
+    const dir = mkdtempSync(join(tmpdir(), "contain-audit-"));
+    const file = join(dir, "trail.jsonl");
+    try {
+      const trail = new AuditTrail();
+      trail.recordFinding(finding("f1"));
+      await trail.save(file);
+
+      trail.recordFinding(finding("f2"));
+      await trail.save(file);
+
+      const lines = readFileSync(file, "utf8").trim().split("\n");
+      expect(lines).toHaveLength(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("emits one JSON object per line", () => {

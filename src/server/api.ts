@@ -142,7 +142,13 @@ export function createApiServer(options: ServerOptions): Server {
         const finding = session.state.finding(String(body.findingId));
         if (!finding) return json(404, { error: "unknown finding" });
 
-        const decision = body.decision === "allow" ? "allow" : "deny";
+        // Anything other than an explicit allow or deny is a bad request, not a
+        // denial. Quietly recording a malformed call as a human decision would put
+        // something in the audit trail that nobody actually said.
+        if (body.decision !== "allow" && body.decision !== "deny") {
+          return json(400, { error: 'decision must be "allow" or "deny"' });
+        }
+        const decision = body.decision;
         const grant = session.state.approvals.grant({
           findingId: finding.id,
           secret: finding.secret,

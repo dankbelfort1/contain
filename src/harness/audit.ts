@@ -112,6 +112,8 @@ export function assertNoSecrets(serialised: string): void {
 
 export class AuditTrail {
   readonly #events: AuditEvent[] = [];
+  /** How many events have already been written, so a second save appends only new ones. */
+  #savedUpTo = 0;
 
   record(event: AuditEvent): void {
     const serialised = JSON.stringify(event);
@@ -119,8 +121,13 @@ export class AuditTrail {
     this.#events.push(event);
   }
 
+  /**
+   * A copy. The trail is append-only and the validation happens on the way in, so
+   * handing out the live array would let a caller edit a recorded event afterwards,
+   * past the check that is supposed to keep credentials out of it.
+   */
   events(): readonly AuditEvent[] {
-    return this.#events;
+    return this.#events.map((e) => ({ ...e }));
   }
 
   /** One JSON object per line, in the order things happened. */
@@ -128,9 +135,20 @@ export class AuditTrail {
     return this.#events.map((e) => JSON.stringify(e)).join("\n") + "\n";
   }
 
+  /**
+   * Append to the trail file.
+   *
+   * Only events not already written. Saving appends, so writing the whole trail each
+   * time duplicated every earlier event, and a run saved twice would read as though
+   * everything had happened twice.
+   */
   async save(path: string): Promise<void> {
+    const pending = this.#events.slice(this.#savedUpTo);
+    if (pending.length === 0) return;
     await mkdir(dirname(path), { recursive: true });
-    await appendFile(path, this.toJSONL(), "utf8");
+    const lines = pending.map((e) => JSON.stringify(e)).join("\n");
+    await appendFile(path, lines + "\n", "utf8");
+    this.#savedUpTo = this.#events.length;
   }
 
   // Convenience recorders. They exist so the redaction happens in one place rather

@@ -11,6 +11,7 @@
  * needed. That is what stops a leaked credential being leaked a second time by the
  * thing sent to clean it up.
  */
+import { randomBytes } from "node:crypto";
 import type { Plan } from "../agent/plan.js";
 import { AuditTrail } from "../harness/audit.js";
 import { ApprovalRegistry } from "../policy/approval.js";
@@ -48,7 +49,10 @@ export function toSafeFinding(finding: Finding): SafeFinding {
 }
 
 export class RunState {
-  readonly runId = `run-${Date.now().toString(36)}`;
+  // The timestamp alone collides for runs started in the same millisecond, and the
+  // run id names the audit file, so a collision means one run appending to another's
+  // trail.
+  readonly runId = `run-${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`;
   readonly startedAt = Date.now();
   readonly audit = new AuditTrail();
   readonly approvals = new ApprovalRegistry();

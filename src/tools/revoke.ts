@@ -89,6 +89,14 @@ export async function revokeCredential(params: RevokeParams): Promise<RevokeReco
     throw new ApprovalError(`No revoke tool for provider "${finding.provider}".`);
   }
 
+  // Claim the grant before the network call. Without this, two concurrent calls both
+  // pass the "already spent" check above and both fire an irreversible request.
+  if (!registry.claim(grant.token)) {
+    throw new ApprovalError(
+      "This approval is already being spent by another request. Not firing a second time.",
+    );
+  }
+
   const base: Omit<RevokeRecord, "statusAfter" | "confirmed" | "attempted"> = {
     findingId: finding.id,
     provider: finding.provider,
@@ -102,6 +110,7 @@ export async function revokeCredential(params: RevokeParams): Promise<RevokeReco
   if (dryRun) {
     // A dry run must never fire. This is the path replay uses, and replaying a run
     // must not destroy a credential a second time.
+    registry.release(grant.token);
     return {
       ...base,
       attempted: false,
@@ -111,17 +120,25 @@ export async function revokeCredential(params: RevokeParams): Promise<RevokeReco
     };
   }
 
-  const { status } = await post(
-    GITHUB_REVOKE_URL,
-    { credentials: [finding.secret] },
-    {
-      // No Authorization header. GitHub rejects authenticated calls to this endpoint.
-      accept: "application/vnd.github+json",
-      "content-type": "application/json",
-      "x-github-api-version": "2022-11-28",
-      "user-agent": "contain-revoker",
-    },
-  );
+  let status: number;
+  try {
+    ({ status } = await post(
+      GITHUB_REVOKE_URL,
+      { credentials: [finding.secret] },
+      {
+        // No Authorization header. GitHub rejects authenticated calls to this endpoint.
+        accept: "application/vnd.github+json",
+        "content-type": "application/json",
+        "x-github-api-version": "2022-11-28",
+        "user-agent": "contain-revoker",
+      },
+    ));
+  } catch (error) {
+    // The request never landed, so the approval has not been spent. Release it so the
+    // action can be retried rather than needing a fresh human decision.
+    registry.release(grant.token);
+    throw error;
+  }
 
   // 202 is the documented acceptance. Anything else - a 422 validation failure, a
   // 500, a rate limit - means the request was not accepted, and reporting it as an
