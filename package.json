@@ -15,7 +15,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "fixtures": "tsx src/fixtures/main.ts",
-    "mcp": "tsx src/mcp/main.ts"
+    "mcp": "tsx src/mcp/main.ts",
+    "contain": "tsx src/cli/main.ts",
+    "demo": "tsx src/cli/main.ts run fixtures/leaky-service",
+    "demo:dry": "tsx src/cli/main.ts run fixtures/leaky-service --dry-run"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
