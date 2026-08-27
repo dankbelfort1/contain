@@ -59,11 +59,21 @@ const manifest = {
   },
 };
 
-const res = await fetch(`${BASE}/api/v1/agents`, {
-  method: "POST",
-  headers: { "content-type": "application/json" },
-  body: JSON.stringify({ name: "contain", manifest }),
-});
+let res;
+try {
+  res = await fetch(`${BASE}/api/v1/agents`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: "contain", manifest }),
+  });
+} catch (error) {
+  // Almost always TrueForge not being up yet. Say that, rather than letting an
+  // unhandled rejection print a stack trace that buries the actual problem.
+  console.error(`Could not reach TrueForge at ${BASE}.`);
+  console.error(`Is it running? Start it with: npm run trueforge`);
+  console.error(String(error));
+  process.exit(1);
+}
 
 const text = await res.text();
 console.log("http", res.status);
@@ -73,5 +83,7 @@ if (!res.ok) {
   // Without this the script prints an error and exits 0, so a failed setup looks
   // like a successful one and the next step fails somewhere less obvious.
   console.error(`Failed to create the agent (HTTP ${res.status}).`);
-  process.exitCode = 1;
+  process.exit(1);
 }
+
+console.log("\nAgent created. Next: npm run trueforge:demo");
