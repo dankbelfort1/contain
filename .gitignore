@@ -12,3 +12,6 @@ audit/*.jsonl
 
 # Scanner binaries are downloaded, not vendored.
 bin/
+
+# Generated demo repo with real secrets planted in history. Never commit.
+fixtures/
