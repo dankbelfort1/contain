@@ -217,7 +217,7 @@ export async function run(options: RunOptions): Promise<RunState> {
       const refused = error instanceof ApprovalError;
       const reason = refused ? error.message : `Revocation failed: ${String(error)}`;
       state.audit.record({
-        type: "action.refused",
+        type: refused ? "action.refused" : "action.failed",
         at: new Date().toISOString(),
         findingId: item.findingId,
         reason,

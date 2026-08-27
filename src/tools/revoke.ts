@@ -120,6 +120,23 @@ export async function revokeCredential(params: RevokeParams): Promise<RevokeReco
     };
   }
 
+  // From here on the grant is spent, whatever happens.
+  //
+  // A request that throws may still have reached the provider: fetch cannot tell a
+  // refused connection from a response lost after the body was sent. Releasing the
+  // claim would allow a second irreversible request on the strength of a guess, and
+  // leaving it claimed but unconsumed would strand it so no retry was possible either.
+  // Consuming it means an ambiguous outcome needs a fresh human decision, which is the
+  // safe direction for an action that cannot be undone.
+  let settled = false;
+  const consumeOnce = (record: RevokeRecord): RevokeRecord => {
+    if (!settled) {
+      settled = true;
+      registry.markConsumed(grant.token, record);
+    }
+    return record;
+  };
+
   let status: number;
   try {
     ({ status } = await post(
@@ -134,9 +151,31 @@ export async function revokeCredential(params: RevokeParams): Promise<RevokeReco
       },
     ));
   } catch (error) {
-    // The request never landed, so the approval has not been spent. Release it so the
-    // action can be retried rather than needing a fresh human decision.
-    registry.release(grant.token);
+    consumeOnce({
+      ...base,
+      attempted: true,
+      statusAfter: params.statusBefore,
+      confirmed: false,
+      note:
+        `The request failed (${String(error)}) and it is not knowable whether it ` +
+        "reached the provider. Re-verify the credential by hand. A retry needs a new approval.",
+    });
+    throw error;
+  }
+
+  let after;
+  try {
+    after = await verifyFinding(finding, sandbox);
+  } catch (error) {
+    // The request went out. Failing to re-check afterwards does not un-send it.
+    consumeOnce({
+      ...base,
+      attempted: true,
+      httpStatus: status,
+      statusAfter: "UNKNOWN",
+      confirmed: false,
+      note: `Re-verification failed (${String(error)}), so the outcome is unconfirmed.`,
+    });
     throw error;
   }
 
@@ -145,9 +184,6 @@ export async function revokeCredential(params: RevokeParams): Promise<RevokeReco
   // attempted revocation would overstate what happened.
   const accepted = status === 202;
 
-  // Even an accepted request proves nothing, because 202 is returned for credentials
-  // that never existed. So go and look either way.
-  const after = await verifyFinding(finding, sandbox);
 
   // Confirmation requires two things: we saw the credential working before, and we
   // saw it stop. A credential that was already DEAD or UNKNOWN beforehand gives us no
@@ -164,8 +200,7 @@ export async function revokeCredential(params: RevokeParams): Promise<RevokeReco
     ...(noteFor(accepted, params.statusBefore, after.status, status)),
   };
 
-  registry.markConsumed(grant.token, record);
-  return record;
+  return consumeOnce(record);
 }
 
 function noteFor(

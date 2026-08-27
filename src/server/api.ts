@@ -210,9 +210,10 @@ export function createApiServer(options: ServerOptions): Server {
           session.stage = "done";
           return json(200, snapshot());
         } catch (error) {
-          const reason = error instanceof ApprovalError ? error.message : String(error);
+          const refused = error instanceof ApprovalError;
+          const reason = refused ? error.message : String(error);
           session.state.audit.record({
-            type: "action.refused",
+            type: refused ? "action.refused" : "action.failed",
             at: new Date().toISOString(),
             findingId: finding.id,
             reason,

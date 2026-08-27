@@ -71,15 +71,18 @@ function runChild(
       { cwd: dir, env, timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024 },
       (err, stdout, stderr) => {
         clearTimeout(reaper);
+        // execFile signals the child but leaves anything it spawned running, and its
+        // callback fires the moment it does. Reaping on a later timer never happened,
+        // because this callback cancelled it first. Kill the tree here instead, on
+        // the timeout path where a descendant could actually still be alive.
+        if (err && (err as { killed?: boolean }).killed === true) killTree(child.pid);
         if (err) reject(Object.assign(err, { stderr }));
         else resolve({ stdout, stderr });
       },
     );
 
-    // execFile's own timeout signals the child but leaves anything it spawned running,
-    // so a template that starts a subprocess could outlive the sandbox that was
-    // supposed to bound it. Reap the whole tree slightly after execFile gives up.
-    const reaper = setTimeout(() => killTree(child.pid), timeoutMs + 500);
+    // Backstop for the case where execFile never calls back at all.
+    const reaper = setTimeout(() => killTree(child.pid), timeoutMs + 2000);
     reaper.unref();
   });
 }

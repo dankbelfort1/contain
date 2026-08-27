@@ -77,7 +77,13 @@ export type AuditEvent =
       dryRun: boolean;
       note?: string | undefined;
     }
+  /** A human, or the gate, declined. Somebody said no. */
   | { type: "action.refused"; at: string; findingId: string; reason: string }
+  /**
+   * The action was permitted but did not complete. Distinct from a refusal, because
+   * reading a network fault as "refused" months later suggests a decision nobody made.
+   */
+  | { type: "action.failed"; at: string; findingId: string; reason: string }
   | { type: "run.completed"; at: string; runId: string; durationMs: number };
 
 /** Shapes that look like credentials. Used to prove no event carries one. */
@@ -114,6 +120,8 @@ export class AuditTrail {
   readonly #events: AuditEvent[] = [];
   /** How many events have already been written, so a second save appends only new ones. */
   #savedUpTo = 0;
+  /** Serialises saves. Two concurrent calls would otherwise read the same offset. */
+  #writing: Promise<void> = Promise.resolve();
 
   record(event: AuditEvent): void {
     const serialised = JSON.stringify(event);

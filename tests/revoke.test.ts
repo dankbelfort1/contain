@@ -322,9 +322,10 @@ describe("concurrent use of one approval", () => {
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
   });
 
-  it("releases the approval when the request never landed", async () => {
-    // A failed request has not spent the approval, so a retry should not need a
-    // fresh human decision.
+  it("spends the approval even when the request fails, because it may have landed", async () => {
+    // fetch cannot distinguish a refused connection from a response lost after the
+    // body was sent. Releasing the approval would allow a second irreversible request
+    // on the strength of a guess, so an ambiguous outcome needs a fresh decision.
     const registry2 = new ApprovalRegistry();
     const grant = registry2.grant({
       findingId: finding().id,
@@ -347,8 +348,43 @@ describe("concurrent use of one approval", () => {
       /ECONNRESET/,
     );
 
+    // The retry returns the recorded attempt rather than firing again.
     const retry = await revokeCredential({ ...args, post: post as never });
-    expect(retry.attempted).toBe(true);
+    expect(post).not.toHaveBeenCalled();
+    expect(retry.attempted).toBe(false);
+    expect(retry.note).toContain("Already revoked");
+  });
+
+  it("does not strand the approval when re-verification fails", async () => {
+    // The request went out. Failing to check afterwards does not un-send it, and
+    // leaving the grant claimed but unconsumed would make retry impossible forever.
+    const registry2 = new ApprovalRegistry();
+    const grant = registry2.grant({
+      findingId: finding().id,
+      secret: LIVE_SECRET,
+      decision: "allow",
+      grantedBy: "deep",
+    });
+    const brokenSandbox = {
+      kind: "local" as const,
+      async run(): Promise<never> {
+        throw new Error("sandbox unavailable");
+      },
+    };
+
+    await expect(
+      revokeCredential({
+        finding: finding(),
+        statusBefore: "LIVE",
+        approvalToken: grant.token,
+        registry: registry2,
+        sandbox: brokenSandbox,
+        post,
+      }),
+    ).rejects.toThrow(/sandbox unavailable/);
+
+    const consumed = registry2.consumedResult(grant.token);
+    expect(consumed).toBeDefined();
   });
 });
 
