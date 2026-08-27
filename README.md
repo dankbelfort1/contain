@@ -94,11 +94,26 @@ npm run ui                # http://localhost:8910
 To drive it from a TrueForge agent instead:
 
 ```bash
-npm run mcp               # http://localhost:8900/mcp
+npm run mcp                             # terminal 1
+npm run trueforge                       # terminal 2, http://localhost:8790
+node scripts/create-trueforge-agent.mjs # after connecting Gemini and the connector
+npm run trueforge:demo
 ```
 
-Then add that URL under **Settings, Connectors** in TrueForge, and create an agent from
-`src/agent/spec.ts`.
+Full steps in [`docs/trueforge-setup.md`](docs/trueforge-setup.md). What actually happened
+when this was run, including the recorded pause event, is in
+[`docs/trueforge-run.md`](docs/trueforge-run.md).
+
+Two turns, from a real run:
+
+```
+TURN 1  scan, verify, blast radius, plan      completed unattended
+TURN 2  "Revoke the live credential now."     tool.approval_required, turn paused
+```
+
+The agent used four read-only tools without asking anyone for anything, then stopped dead
+on the fifth. Resuming with a denial, the agent reported the refusal and reasoned about it
+rather than retrying. The credential was verified afterwards and still works.
 
 ## What the demo shows
 
