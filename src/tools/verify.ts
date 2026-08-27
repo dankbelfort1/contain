@@ -113,7 +113,14 @@ export async function verifyAll(
 ): Promise<VerificationRecord[]> {
   const records: VerificationRecord[] = [];
   for (const finding of findings) {
-    records.push(await verifyFinding(finding, sandbox));
+    try {
+      records.push(await verifyFinding(finding, sandbox));
+    } catch (error) {
+      // A sandbox that throws rather than returning a failed result would otherwise
+      // abandon every finding after this one. Triaging the rest matters more than
+      // failing fast on one.
+      records.push(unverifiable(finding, `Verification threw: ${String(error)}`));
+    }
   }
   return records;
 }

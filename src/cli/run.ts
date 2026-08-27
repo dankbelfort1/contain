@@ -212,15 +212,17 @@ export async function run(options: RunOptions): Promise<RunState> {
         console.log(red(`  ${record.note ?? ""}`));
       }
     } catch (error) {
-      // Reaching here means the gate refused, which is a result, not a crash.
-      const reason = error instanceof ApprovalError ? error.message : String(error);
+      // A refusal and a failure are different events. Recording a network fault as
+      // "refused" would read, months later, as though somebody had said no.
+      const refused = error instanceof ApprovalError;
+      const reason = refused ? error.message : `Revocation failed: ${String(error)}`;
       state.audit.record({
-        type: "action.refused",
+        type: refused ? "action.refused" : "action.failed",
         at: new Date().toISOString(),
         findingId: item.findingId,
         reason,
       });
-      console.log(red(`  Refused: ${reason}`));
+      console.log(red(refused ? `  Refused: ${reason}` : `  Failed: ${reason}`));
     }
     console.log();
   }

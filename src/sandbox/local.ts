@@ -6,7 +6,7 @@
  * enforces the same egress allowlist and the same timeout, so a template behaves
  * identically either way.
  */
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -65,16 +65,40 @@ function runChild(
   timeoutMs: number,
 ): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    execFile(
+    const child = execFile(
       process.execPath,
       ["--require", join(dir, "guard.cjs"), join(dir, "entry.cjs")],
       { cwd: dir, env, timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024 },
       (err, stdout, stderr) => {
+        clearTimeout(reaper);
+        // execFile signals the child but leaves anything it spawned running, and its
+        // callback fires the moment it does. Reaping on a later timer never happened,
+        // because this callback cancelled it first. Kill the tree here instead, on
+        // the timeout path where a descendant could actually still be alive.
+        if (err && (err as { killed?: boolean }).killed === true) killTree(child.pid);
         if (err) reject(Object.assign(err, { stderr }));
         else resolve({ stdout, stderr });
       },
     );
+
+    // Backstop for the case where execFile never calls back at all.
+    const reaper = setTimeout(() => killTree(child.pid), timeoutMs + 2000);
+    reaper.unref();
   });
+}
+
+function killTree(pid: number | undefined): void {
+  if (pid === undefined) return;
+  try {
+    if (process.platform === "win32") {
+      // Windows has no process groups to signal, so ask the OS to walk the tree.
+      execFileSync("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore" });
+    } else {
+      process.kill(-pid, "SIGKILL");
+    }
+  } catch {
+    // Already gone, which is the outcome we wanted.
+  }
 }
 
 /** Extract the single marked result line the entry script prints. */

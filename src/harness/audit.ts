@@ -77,7 +77,13 @@ export type AuditEvent =
       dryRun: boolean;
       note?: string | undefined;
     }
+  /** A human, or the gate, declined. Somebody said no. */
   | { type: "action.refused"; at: string; findingId: string; reason: string }
+  /**
+   * The action was permitted but did not complete. Distinct from a refusal, because
+   * reading a network fault as "refused" months later suggests a decision nobody made.
+   */
+  | { type: "action.failed"; at: string; findingId: string; reason: string }
   | { type: "run.completed"; at: string; runId: string; durationMs: number };
 
 /** Shapes that look like credentials. Used to prove no event carries one. */
@@ -112,6 +118,10 @@ export function assertNoSecrets(serialised: string): void {
 
 export class AuditTrail {
   readonly #events: AuditEvent[] = [];
+  /** How many events have already been written, so a second save appends only new ones. */
+  #savedUpTo = 0;
+  /** Serialises saves. Two concurrent calls would otherwise read the same offset. */
+  #writing: Promise<void> = Promise.resolve();
 
   record(event: AuditEvent): void {
     const serialised = JSON.stringify(event);
@@ -119,8 +129,13 @@ export class AuditTrail {
     this.#events.push(event);
   }
 
+  /**
+   * A copy. The trail is append-only and the validation happens on the way in, so
+   * handing out the live array would let a caller edit a recorded event afterwards,
+   * past the check that is supposed to keep credentials out of it.
+   */
   events(): readonly AuditEvent[] {
-    return this.#events;
+    return this.#events.map((e) => ({ ...e }));
   }
 
   /** One JSON object per line, in the order things happened. */
@@ -128,9 +143,32 @@ export class AuditTrail {
     return this.#events.map((e) => JSON.stringify(e)).join("\n") + "\n";
   }
 
+  /**
+   * Append to the trail file.
+   *
+   * Only events not already written. Saving appends, so writing the whole trail each
+   * time duplicated every earlier event, and a run saved twice would read as though
+   * everything had happened twice.
+   */
   async save(path: string): Promise<void> {
+    // Chained rather than concurrent. Two overlapping saves would both read the same
+    // offset, and the second would overwrite the first's bookkeeping.
+    this.#writing = this.#writing.then(() => this.#appendPending(path));
+    await this.#writing;
+  }
+
+  async #appendPending(path: string): Promise<void> {
+    // Capture the boundary before writing, and advance to exactly that. Advancing to
+    // the event count afterwards marked anything recorded during the write as saved
+    // without ever writing it, so those events were dropped from the trail for good.
+    const upTo = this.#events.length;
+    const pending = this.#events.slice(this.#savedUpTo, upTo);
+    if (pending.length === 0) return;
+
     await mkdir(dirname(path), { recursive: true });
-    await appendFile(path, this.toJSONL(), "utf8");
+    const lines = pending.map((e) => JSON.stringify(e)).join("\n");
+    await appendFile(path, lines + "\n", "utf8");
+    this.#savedUpTo = upTo;
   }
 
   // Convenience recorders. They exist so the redaction happens in one place rather

@@ -9,7 +9,8 @@ import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type { Finding } from "../types.js";
 
@@ -32,11 +33,20 @@ interface GitleaksFinding {
 
 export class ScannerError extends Error {}
 
-/** Locate the gitleaks binary: the vendored copy first, then PATH. */
+/**
+ * Locate the gitleaks binary: the vendored copy first, then PATH.
+ *
+ * Resolved relative to this module rather than the working directory. Using cwd meant
+ * the vendored binary was invisible whenever the process was started from anywhere
+ * other than the repository root, and the failure was silent: it fell through to PATH
+ * and reported that gitleaks was not installed.
+ */
 export function resolveGitleaksPath(): string {
-  const vendored = resolve("bin", process.platform === "win32" ? "gitleaks.exe" : "gitleaks");
+  const binary = process.platform === "win32" ? "gitleaks.exe" : "gitleaks";
+  const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+  const vendored = join(repoRoot, "bin", binary);
   if (existsSync(vendored)) return vendored;
-  return process.platform === "win32" ? "gitleaks.exe" : "gitleaks";
+  return binary;
 }
 
 /**

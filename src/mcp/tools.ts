@@ -199,6 +199,16 @@ export const TOOLS: readonly ToolDefinition[] = [
 
       const verification = deps.state.verification(findingId);
 
+      // Refuse to act on something nobody has looked at. Approving a revocation
+      // without a verification means the blast radius that justifies it was never
+      // produced, and the human decision upstream was made blind.
+      if (!verification) {
+        throw new ApprovalError(
+          `Finding ${findingId} has not been verified. Run verify_credential first, ` +
+            "so the decision to revoke is made with evidence rather than without it.",
+        );
+      }
+
       // Two callers, two gates, and they are not interchangeable.
       //
       // The CLI and the UI issue an approval bound to this credential and pass the
@@ -239,7 +249,7 @@ export const TOOLS: readonly ToolDefinition[] = [
       try {
         const record = await revokeCredential({
           finding,
-          statusBefore: verification?.status ?? "UNVERIFIED",
+          statusBefore: verification.status,
           approvalToken,
           registry: deps.state.approvals,
           sandbox: deps.sandbox,

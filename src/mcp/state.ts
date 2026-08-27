@@ -5,12 +5,19 @@
  * to verifications, an approval refers to a finding, and a revoke refers to both. This
  * holds that between calls.
  *
+ * One run at a time. The server holds a single RunState, so two clients connected at
+ * once would overwrite each other's findings and share an audit trail. That is a real
+ * limitation rather than an oversight: this is a single-operator tool bound to
+ * loopback, and multi-tenancy would mean per-session isolation and an auth model it
+ * does not have. Starting a new scan deliberately clears the previous run.
+ *
  * Credentials live here and nowhere else. They are never returned from a tool, never
  * written to the audit trail, and never sent to the model. The model works with
  * finding ids and masked values; the real value is looked up here at the moment it is
  * needed. That is what stops a leaked credential being leaked a second time by the
  * thing sent to clean it up.
  */
+import { randomBytes } from "node:crypto";
 import type { Plan } from "../agent/plan.js";
 import { AuditTrail } from "../harness/audit.js";
 import { ApprovalRegistry } from "../policy/approval.js";
@@ -48,7 +55,10 @@ export function toSafeFinding(finding: Finding): SafeFinding {
 }
 
 export class RunState {
-  readonly runId = `run-${Date.now().toString(36)}`;
+  // The timestamp alone collides for runs started in the same millisecond, and the
+  // run id names the audit file, so a collision means one run appending to another's
+  // trail.
+  readonly runId = `run-${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`;
   readonly startedAt = Date.now();
   readonly audit = new AuditTrail();
   readonly approvals = new ApprovalRegistry();

@@ -129,10 +129,22 @@ export default function App() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ findingId }),
       });
-      const body = await res.json();
+      // A proxy error, a crash, or an empty body all produce responses that are not
+      // the shape this expects. Reading .error off them blanked the page instead of
+      // showing what went wrong.
+      const text = await res.text();
+      let body: unknown;
+      try {
+        body = JSON.parse(text);
+      } catch {
+        setError(`Server returned ${res.status}: ${text.slice(0, 200) || "empty response"}`);
+        return;
+      }
+
+      const payload = body as { error?: unknown; state?: unknown };
       if (!res.ok) {
-        setError(body.error as string);
-        if (body.state) setSnap(body.state as Snapshot);
+        setError(typeof payload.error === "string" ? payload.error : `Request failed (${res.status})`);
+        if (payload.state) setSnap(payload.state as Snapshot);
       } else {
         setSnap(body as Snapshot);
       }

@@ -286,6 +286,108 @@ describe("revoke with a valid approval", () => {
   });
 });
 
+describe("concurrent use of one approval", () => {
+  it("fires once when two revocations race on the same token", async () => {
+    // Checking "already spent" and then acting are two steps with an await between
+    // them, so both callers used to pass the check and both fired an irreversible
+    // request.
+    const registry2 = new ApprovalRegistry();
+    const grant = registry2.grant({
+      findingId: finding().id,
+      secret: LIVE_SECRET,
+      decision: "allow",
+      grantedBy: "deep",
+    });
+    const slowPost = vi.fn(async () => {
+      await new Promise((r) => setTimeout(r, 30));
+      return { status: 202 };
+    });
+
+    const args = {
+      finding: finding(),
+      statusBefore: "LIVE" as const,
+      approvalToken: grant.token,
+      registry: registry2,
+      sandbox: sandboxReporting("DEAD"),
+      post: slowPost as never,
+    };
+
+    const results = await Promise.allSettled([
+      revokeCredential(args),
+      revokeCredential(args),
+      revokeCredential(args),
+    ]);
+
+    expect(slowPost).toHaveBeenCalledTimes(1);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+  });
+
+  it("spends the approval even when the request fails, because it may have landed", async () => {
+    // fetch cannot distinguish a refused connection from a response lost after the
+    // body was sent. Releasing the approval would allow a second irreversible request
+    // on the strength of a guess, so an ambiguous outcome needs a fresh decision.
+    const registry2 = new ApprovalRegistry();
+    const grant = registry2.grant({
+      findingId: finding().id,
+      secret: LIVE_SECRET,
+      decision: "allow",
+      grantedBy: "deep",
+    });
+    const failing = vi.fn(async () => {
+      throw new Error("ECONNRESET");
+    });
+    const args = {
+      finding: finding(),
+      statusBefore: "LIVE" as const,
+      approvalToken: grant.token,
+      registry: registry2,
+      sandbox: sandboxReporting("DEAD"),
+    };
+
+    await expect(revokeCredential({ ...args, post: failing as never })).rejects.toThrow(
+      /ECONNRESET/,
+    );
+
+    // The retry returns the recorded attempt rather than firing again.
+    const retry = await revokeCredential({ ...args, post: post as never });
+    expect(post).not.toHaveBeenCalled();
+    expect(retry.attempted).toBe(false);
+    expect(retry.note).toContain("Already revoked");
+  });
+
+  it("does not strand the approval when re-verification fails", async () => {
+    // The request went out. Failing to check afterwards does not un-send it, and
+    // leaving the grant claimed but unconsumed would make retry impossible forever.
+    const registry2 = new ApprovalRegistry();
+    const grant = registry2.grant({
+      findingId: finding().id,
+      secret: LIVE_SECRET,
+      decision: "allow",
+      grantedBy: "deep",
+    });
+    const brokenSandbox = {
+      kind: "local" as const,
+      async run(): Promise<never> {
+        throw new Error("sandbox unavailable");
+      },
+    };
+
+    await expect(
+      revokeCredential({
+        finding: finding(),
+        statusBefore: "LIVE",
+        approvalToken: grant.token,
+        registry: registry2,
+        sandbox: brokenSandbox,
+        post,
+      }),
+    ).rejects.toThrow(/sandbox unavailable/);
+
+    const consumed = registry2.consumedResult(grant.token);
+    expect(consumed).toBeDefined();
+  });
+});
+
 describe("dry run", () => {
   it("never sends a request", async () => {
     // Replay runs in dry-run mode. Replaying a past run must not destroy a

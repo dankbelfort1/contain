@@ -89,6 +89,14 @@ export async function revokeCredential(params: RevokeParams): Promise<RevokeReco
     throw new ApprovalError(`No revoke tool for provider "${finding.provider}".`);
   }
 
+  // Claim the grant before the network call. Without this, two concurrent calls both
+  // pass the "already spent" check above and both fire an irreversible request.
+  if (!registry.claim(grant.token)) {
+    throw new ApprovalError(
+      "This approval is already being spent by another request. Not firing a second time.",
+    );
+  }
+
   const base: Omit<RevokeRecord, "statusAfter" | "confirmed" | "attempted"> = {
     findingId: finding.id,
     provider: finding.provider,
@@ -102,6 +110,7 @@ export async function revokeCredential(params: RevokeParams): Promise<RevokeReco
   if (dryRun) {
     // A dry run must never fire. This is the path replay uses, and replaying a run
     // must not destroy a credential a second time.
+    registry.release(grant.token);
     return {
       ...base,
       attempted: false,
@@ -111,26 +120,70 @@ export async function revokeCredential(params: RevokeParams): Promise<RevokeReco
     };
   }
 
-  const { status } = await post(
-    GITHUB_REVOKE_URL,
-    { credentials: [finding.secret] },
-    {
-      // No Authorization header. GitHub rejects authenticated calls to this endpoint.
-      accept: "application/vnd.github+json",
-      "content-type": "application/json",
-      "x-github-api-version": "2022-11-28",
-      "user-agent": "contain-revoker",
-    },
-  );
+  // From here on the grant is spent, whatever happens.
+  //
+  // A request that throws may still have reached the provider: fetch cannot tell a
+  // refused connection from a response lost after the body was sent. Releasing the
+  // claim would allow a second irreversible request on the strength of a guess, and
+  // leaving it claimed but unconsumed would strand it so no retry was possible either.
+  // Consuming it means an ambiguous outcome needs a fresh human decision, which is the
+  // safe direction for an action that cannot be undone.
+  let settled = false;
+  const consumeOnce = (record: RevokeRecord): RevokeRecord => {
+    if (!settled) {
+      settled = true;
+      registry.markConsumed(grant.token, record);
+    }
+    return record;
+  };
+
+  let status: number;
+  try {
+    ({ status } = await post(
+      GITHUB_REVOKE_URL,
+      { credentials: [finding.secret] },
+      {
+        // No Authorization header. GitHub rejects authenticated calls to this endpoint.
+        accept: "application/vnd.github+json",
+        "content-type": "application/json",
+        "x-github-api-version": "2022-11-28",
+        "user-agent": "contain-revoker",
+      },
+    ));
+  } catch (error) {
+    consumeOnce({
+      ...base,
+      attempted: true,
+      statusAfter: params.statusBefore,
+      confirmed: false,
+      note:
+        `The request failed (${String(error)}) and it is not knowable whether it ` +
+        "reached the provider. Re-verify the credential by hand. A retry needs a new approval.",
+    });
+    throw error;
+  }
+
+  let after;
+  try {
+    after = await verifyFinding(finding, sandbox);
+  } catch (error) {
+    // The request went out. Failing to re-check afterwards does not un-send it.
+    consumeOnce({
+      ...base,
+      attempted: true,
+      httpStatus: status,
+      statusAfter: "UNKNOWN",
+      confirmed: false,
+      note: `Re-verification failed (${String(error)}), so the outcome is unconfirmed.`,
+    });
+    throw error;
+  }
 
   // 202 is the documented acceptance. Anything else - a 422 validation failure, a
   // 500, a rate limit - means the request was not accepted, and reporting it as an
   // attempted revocation would overstate what happened.
   const accepted = status === 202;
 
-  // Even an accepted request proves nothing, because 202 is returned for credentials
-  // that never existed. So go and look either way.
-  const after = await verifyFinding(finding, sandbox);
 
   // Confirmation requires two things: we saw the credential working before, and we
   // saw it stop. A credential that was already DEAD or UNKNOWN beforehand gives us no
@@ -147,8 +200,7 @@ export async function revokeCredential(params: RevokeParams): Promise<RevokeReco
     ...(noteFor(accepted, params.statusBefore, after.status, status)),
   };
 
-  registry.markConsumed(grant.token, record);
-  return record;
+  return consumeOnce(record);
 }
 
 function noteFor(

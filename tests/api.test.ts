@@ -148,6 +148,50 @@ describe("the gate is server-side, not in the browser", () => {
   });
 });
 
+describe("approval cannot skip the investigation", () => {
+  it("refuses an approval before a plan exists", async () => {
+    // Otherwise a caller could scan, approve and revoke while skipping verification
+    // and the blast radius, which are the reason the decision is asked of a human.
+    await post("/api/reset");
+    const scanned = await post("/api/scan");
+    const findingId = (scanned.body["findings"] as unknown as { findingId: string }[])[0]!
+      .findingId;
+
+    const res = await post("/api/approve", { findingId, decision: "allow" });
+    expect(res.status).toBe(409);
+    expect(String(res.body["error"])).toMatch(/No plan has been built/);
+  });
+
+  it("refuses an approval for a finding the plan does not propose acting on", async () => {
+    await post("/api/reset");
+    await post("/api/scan");
+    await post("/api/verify");
+    const planned = await post("/api/plan");
+    const items = planned.body["plan"] as unknown as {
+      items: { findingId: string; requiresApproval: boolean }[];
+    };
+    const dead = items.items.find((i) => !i.requiresApproval)!;
+
+    const res = await post("/api/approve", { findingId: dead.findingId, decision: "allow" });
+    expect(res.status).toBe(409);
+    expect(String(res.body["error"])).toMatch(/nothing to approve/);
+  });
+
+  it("rejects a malformed decision instead of recording it as a denial", async () => {
+    await post("/api/reset");
+    await post("/api/scan");
+    await post("/api/verify");
+    const planned = await post("/api/plan");
+    const items = planned.body["plan"] as unknown as {
+      items: { findingId: string; requiresApproval: boolean }[];
+    };
+    const gated = items.items.find((i) => i.requiresApproval)!;
+
+    const res = await post("/api/approve", { findingId: gated.findingId, decision: "maybe" });
+    expect(res.status).toBe(400);
+  });
+});
+
 describe("the API never returns a credential", () => {
   it("omits secrets from every response", async () => {
     await post("/api/reset");
