@@ -25,13 +25,15 @@
     "ui:build": "vite build --config ui/vite.config.ts",
     "trueforge": "node node_modules/@truefoundry/trueforge/dist/cli.js",
     "trueforge:agent": "node scripts/create-trueforge-agent.mjs",
-    "trueforge:demo": "node scripts/run-trueforge-demo.mjs"
+    "trueforge:demo": "node scripts/run-trueforge-demo.mjs",
+    "postinstall": "node scripts/patch-kysely-windows.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@truefoundry/trueforge": "^0.1.4",
     "@types/node": "^22.15.0",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5",

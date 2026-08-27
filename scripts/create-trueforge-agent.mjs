@@ -68,3 +68,10 @@ const res = await fetch(`${BASE}/api/v1/agents`, {
 const text = await res.text();
 console.log("http", res.status);
 console.log(text.slice(0, 600));
+
+if (!res.ok) {
+  // Without this the script prints an error and exits 0, so a failed setup looks
+  // like a successful one and the next step fails somewhere less obvious.
+  console.error(`Failed to create the agent (HTTP ${res.status}).`);
+  process.exitCode = 1;
+}

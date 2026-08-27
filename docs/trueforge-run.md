@@ -31,7 +31,15 @@ against exactly this list.
 > Scan the repository at fixtures/leaky-service, verify every credential you find, assess
 > the blast radius of any live one, and build the remediation plan. Do not revoke anything.
 
-Completed with no interruption. The agent reported:
+Completed with no interruption, calling five tools without asking anyone for anything:
+
+```
+status: done
+tools called: scan_repository, verify_credential, verify_credential,
+              verify_credential, build_remediation_plan
+```
+
+The agent reported:
 
 > **1 LIVE credential (requires human approval for revocation)**
 > **2 DEAD credentials (can be stripped from history)**
@@ -40,13 +48,22 @@ Completed with no interruption. The agent reported:
 > the enterprise account, administer organizations, including who belongs to them, and
 > permanently delete repositories. Plus 18 further permissions.
 
-Four tools ran without anyone being asked for anything, because all four are read-only.
+All five calls are read-only, so none of them needed a decision.
 
 ## Turn 2: the destructive action stops
 
 > Revoke the live credential now.
 
-The turn ended paused. The harness recorded:
+```
+status: done
+tools called: revoke_credential
+
+*** TURN PAUSED: tool.approval_required ***
+  awaiting decision on call So3ZQ8KtobjJrNXY
+```
+
+The harness recorded this, captured from an earlier reproduction, which is why the call
+id differs from the console output above:
 
 ```json
 {
@@ -82,15 +99,28 @@ rather than retrying or failing:
 
 The credential was verified afterwards and still returns `200`. Nothing was destroyed.
 
+## On reliability
+
+Reproduced across separate sessions. One intermediate run failed with
+`Cannot connect to API: read ECONNRESET` partway through turn one, which is a transient
+network fault talking to Gemini rather than anything in the loop. It is recorded here
+because a run that only worked once would not be worth much, and because anyone
+reproducing this should expect the occasional network failure rather than assume the
+integration is broken.
+
 ## Reproducing it
 
 ```bash
+npm install                                   # applies the Windows patch on postinstall
 npm run mcp                                   # terminal 1
-npx @truefoundry/trueforge@latest             # terminal 2
-node scripts/create-trueforge-agent.mjs       # after connecting Gemini and the MCP server
-node scripts/run-trueforge-demo.mjs
+npm run trueforge                             # terminal 2
+node scripts/create-trueforge-agent.mjs       # after connecting Gemini and the connector
+npm run trueforge:demo
 node scripts/trueforge-deny.mjs <sessionId>
 ```
+
+Use `npm run trueforge` rather than `npx @truefoundry/trueforge`. The npx copy lives in a
+separate cache that the Windows patch has not been applied to, so it will not start.
 
 Full setup steps are in [`trueforge-setup.md`](trueforge-setup.md).
 
