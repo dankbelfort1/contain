@@ -71,6 +71,24 @@ export function padVisible(text: string, width: number): string {
   return text + " ".repeat(Math.max(0, width - visibleLength));
 }
 
+/**
+ * Strip control characters from untrusted text before printing it.
+ *
+ * Commit messages, author names and file paths come from the repository being scanned,
+ * which is by definition not ours. Printed raw, a crafted commit message could move the
+ * cursor, clear the screen, or repaint the approval panel to say something other than
+ * what is about to happen. The gate is only meaningful if it cannot be forged.
+ */
+export function safe(text: string): string {
+  return String(text)
+    .split("")
+    .filter((ch) => {
+      const cp = ch.codePointAt(0) ?? 0;
+      return cp >= 32 && cp !== 127;
+    })
+    .join("");
+}
+
 /** Wrap prose to the panel width, preserving whole words. */
 export function wrap(text: string, indent = 0, width = WIDTH): string[] {
   const pad = " ".repeat(indent);
@@ -91,7 +109,7 @@ export function wrap(text: string, indent = 0, width = WIDTH): string[] {
 
 export function renderVerification(record: VerificationRecord, location: string, masked: string): string {
   const out: string[] = [];
-  out.push(`  ${statusBadge(record.status)}  ${bold(masked)}  ${dim(location)}`);
+  out.push(`  ${statusBadge(record.status)}  ${bold(safe(masked))}  ${dim(safe(location))}`);
   out.push(
     dim(
       `         template ${record.templateId ?? "none"} | sandbox ${record.sandboxKind ?? "none"} | ${record.elapsedMs}ms`,
@@ -100,7 +118,7 @@ export function renderVerification(record: VerificationRecord, location: string,
 
   if (record.status === "LIVE") {
     out.push("");
-    for (const line of wrap(record.blastRadius.headline, 9)) out.push(red(line));
+    for (const line of wrap(safe(record.blastRadius.headline), 9)) out.push(red(line));
     if (record.blastRadius.reach.length > 0) {
       out.push(dim(`         reaches: ${record.blastRadius.reach.join("; ")}`));
     }
@@ -124,9 +142,9 @@ export function renderPlanItem(item: PlanItem, index: number): string {
     ? red(bold("APPROVAL REQUIRED"))
     : green("no approval needed");
 
-  out.push(`  ${bold(`${index + 1}.`)} ${statusBadge(item.status)} ${bold(item.location)}`);
+  out.push(`  ${bold(`${index + 1}.`)} ${statusBadge(item.status)} ${bold(safe(item.location))}`);
   out.push(`     action: ${bold(item.action)}   ${gate}`);
-  for (const line of wrap(item.reason, 5)) out.push(dim(line));
+  for (const line of wrap(safe(item.reason), 5)) out.push(dim(line));
   return out.join("\n");
 }
 
@@ -145,10 +163,10 @@ export function renderApprovalGate(item: PlanItem): string {
   out.push(red(bold("├" + "─".repeat(WIDTH - 2) + "┤")));
 
   const rows = [
-    ["credential", item.maskedSecret],
-    ["found at", item.location],
-    ["status", item.status],
-    ["action", item.action],
+    ["credential", safe(item.maskedSecret)],
+    ["found at", safe(item.location)],
+    ["status", safe(item.status)],
+    ["action", safe(item.action)],
   ];
   for (const [label, value] of rows) {
     const cell = `  ${dim((label ?? "").padEnd(12))}${value ?? ""}`;
@@ -156,7 +174,7 @@ export function renderApprovalGate(item: PlanItem): string {
   }
 
   out.push(red(bold("│")) + " ".repeat(WIDTH - 2) + red(bold("│")));
-  for (const line of wrap(item.blastRadius, 2, WIDTH - 4)) {
+  for (const line of wrap(safe(item.blastRadius), 2, WIDTH - 4)) {
     out.push(red(bold("│")) + line.padEnd(WIDTH - 2) + red(bold("│")));
   }
   out.push(red(bold("│")) + " ".repeat(WIDTH - 2) + red(bold("│")));

@@ -82,6 +82,8 @@ export async function startHttpServer(deps: ToolDeps, port: number): Promise<Htt
     });
   });
 
-  await new Promise<void>((resolve) => http.listen(port, resolve));
+  // Loopback only: the destructive tool is reachable here with no authentication of
+  // its own, so the harness must be on the same machine.
+  await new Promise<void>((resolve) => http.listen(port, "127.0.0.1", resolve));
   return http;
 }

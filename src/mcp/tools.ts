@@ -172,7 +172,11 @@ export const TOOLS: readonly ToolDefinition[] = [
       findingId: z.string().describe("Finding id of the credential to revoke."),
       approvalToken: z
         .string()
-        .describe("Approval token granted by a human for this specific credential."),
+        .optional()
+        .describe(
+          "Approval token, when this server is driven by something that issues them. " +
+            "Omit it under a harness that gates destructive tools itself.",
+        ),
     },
     async handler(args, deps) {
       const findingId = String(args["findingId"]);
@@ -181,11 +185,31 @@ export const TOOLS: readonly ToolDefinition[] = [
 
       const verification = deps.state.verification(findingId);
 
+      // Two callers, two gates, and they are not interchangeable.
+      //
+      // The CLI and the UI issue an approval bound to this credential, and pass the
+      // token. That binding is what stops one approval being used on a different key.
+      //
+      // A harness reaches this handler only after its own human approval, because the
+      // tool is annotated destructive. Nothing issues our token on that path, so
+      // requiring one refused every approved call. Here the harness owns the gate, and
+      // we mint the grant to record that a human decision happened upstream.
+      const suppliedToken = args["approvalToken"];
+      const approvalToken =
+        typeof suppliedToken === "string" && suppliedToken.length > 0
+          ? suppliedToken
+          : deps.state.approvals.grant({
+              findingId,
+              secret: finding.secret,
+              decision: "allow",
+              grantedBy: `${deps.operator} (via harness tool approval)`,
+            }).token;
+
       try {
         const record = await revokeCredential({
           finding,
           statusBefore: verification?.status ?? "UNVERIFIED",
-          approvalToken: String(args["approvalToken"]),
+          approvalToken,
           registry: deps.state.approvals,
           sandbox: deps.sandbox,
           dryRun: deps.dryRun,

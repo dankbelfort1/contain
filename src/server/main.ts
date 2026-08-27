@@ -19,7 +19,10 @@ const server = createApiServer({
   ...(staticDir ? { staticDir } : {}),
 });
 
-server.listen(port, () => {
+// Loopback only. These endpoints approve and revoke credentials with no
+// authentication of their own, so exposing them on every interface would hand anyone
+// on the network the ability to destroy a credential.
+server.listen(port, "127.0.0.1", () => {
   console.log(`ContAIn UI on http://localhost:${port}`);
   console.log(`  repository: ${repositoryPath}`);
   console.log(`  dry run:    ${dryRun}`);

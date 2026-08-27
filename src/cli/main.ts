@@ -39,9 +39,23 @@ async function main(argv: string[]): Promise<number> {
       auditDir: valueOf(rest, "--audit-dir") ?? "audit",
       operator: valueOf(rest, "--operator") ?? process.env["USER"] ?? "operator",
     });
-    // Non-zero when something live is still out there, so CI can fail on it.
+    // Non-zero when a live credential is still out there. Computed from what actually
+    // happened rather than from the plan: a credential that was revoked and confirmed
+    // dead is no longer a reason to fail, and reporting it as one would train people
+    // to ignore the exit code.
     const plan = state.plan();
-    return plan && plan.summary.live > 0 ? 1 : 0;
+    if (!plan) return 0;
+
+    const confirmedDead = new Set(
+      state.audit
+        .events()
+        .filter((e) => e.type === "revoke.completed" && e.confirmed)
+        .map((e) => (e as { findingId: string }).findingId),
+    );
+    const stillLive = plan.items.filter(
+      (item) => item.status === "LIVE" && !confirmedDead.has(item.findingId),
+    );
+    return stillLive.length > 0 ? 1 : 0;
   }
 
   if (command === "audit") {

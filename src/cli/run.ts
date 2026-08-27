@@ -28,6 +28,7 @@ import {
   renderPlanItem,
   renderVerification,
   rule,
+  safe,
   yellow,
 } from "./render.js";
 
@@ -73,8 +74,12 @@ export async function run(options: RunOptions): Promise<RunState> {
 
   console.log(`  ${bold(String(findings.length))} credential(s) found\n`);
   for (const finding of findings) {
-    console.log(`    ${redact(finding.secret)}  ${dim(`${finding.file}:${finding.startLine}`)}`);
-    console.log(dim(`      ${finding.commit.slice(0, 8)}  ${finding.author}  "${finding.commitMessage}"`));
+    console.log(`    ${redact(finding.secret)}  ${dim(safe(`${finding.file}:${finding.startLine}`))}`);
+    console.log(
+      dim(
+        `      ${finding.commit.slice(0, 8)}  ${safe(finding.author)}  "${safe(finding.commitMessage)}"`,
+      ),
+    );
   }
 
   if (findings.length === 0) {

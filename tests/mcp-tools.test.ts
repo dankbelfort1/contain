@@ -151,7 +151,13 @@ describe("the destructive tool refuses without approval", () => {
     expect(refusals).toHaveLength(1);
   });
 
-  it("fires exactly once with a valid approval", async () => {
+  it("fires exactly once with a valid approval, and confirms the transition", async () => {
+    // Verify first so there is a LIVE reading to transition away from. Without one,
+    // a later DEAD reading is not evidence the revoke did anything.
+    deps.sandbox = sandboxReporting("LIVE");
+    await tool("verify_credential").handler({ findingId: "f1" }, deps);
+    deps.sandbox = sandboxReporting("DEAD");
+
     const grant = state.approvals.grant({
       findingId: "f1",
       secret: LIVE_SECRET,
@@ -165,7 +171,29 @@ describe("the destructive tool refuses without approval", () => {
     );
 
     expect(post).toHaveBeenCalledTimes(1);
-    expect(record).toMatchObject({ attempted: true, confirmed: true, statusAfter: "DEAD" });
+    expect(record).toMatchObject({
+      attempted: true,
+      confirmed: true,
+      statusBefore: "LIVE",
+      statusAfter: "DEAD",
+    });
+  });
+
+  it("works under a harness that gates the tool itself, with no token supplied", async () => {
+    // Nothing on the harness path issues our token: the harness's own approval is what
+    // let the call through. Requiring a token here refused every approved revocation.
+    deps.sandbox = sandboxReporting("LIVE");
+    await tool("verify_credential").handler({ findingId: "f1" }, deps);
+    deps.sandbox = sandboxReporting("DEAD");
+
+    const record = (await tool("revoke_credential").handler({ findingId: "f1" }, deps)) as {
+      attempted: boolean;
+      approvedBy: string;
+    };
+
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(record.attempted).toBe(true);
+    expect(record.approvedBy).toContain("harness tool approval");
   });
 });
 

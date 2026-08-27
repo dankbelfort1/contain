@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { dim, padVisible, wrap } from "../src/cli/render.js";
+import { dim, padVisible, safe, wrap } from "../src/cli/render.js";
 import { run } from "../src/cli/run.js";
 import { buildFixtureRepo } from "../src/fixtures/build.js";
 import type { SandboxExecutor, SandboxResult } from "../src/sandbox/types.js";
@@ -159,6 +159,23 @@ describe("render helpers", () => {
     expect(padVisible("abc", 10)).toHaveLength(10);
     // Three visible columns, so seven spaces are added regardless of the escapes.
     expect(padVisible(coloured, 10)).toBe(coloured + " ".repeat(7));
+  });
+
+  it("strips control characters from repository-derived text", () => {
+    // A commit message is not ours. Printed raw it could repaint the approval panel to
+    // say something other than what is about to happen, and the gate is only
+    // meaningful if it cannot be forged.
+    const hostile = "innocent\u001b[2J\u001b[HREVOKING NOTHING\r\u0007";
+    const cleaned = safe(hostile);
+
+    expect(cleaned).not.toContain("\u001b");
+    expect(cleaned).not.toContain("\r");
+    expect(cleaned).not.toContain("\u0007");
+    expect(cleaned).toContain("innocent");
+  });
+
+  it("leaves ordinary text alone", () => {
+    expect(safe('Add deploy config for "staging" - v2')).toBe('Add deploy config for "staging" - v2');
   });
 
   it("never truncates when the text already exceeds the width", () => {
