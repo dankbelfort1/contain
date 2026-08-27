@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -57,6 +58,21 @@ describe("scanRepository", () => {
   it("routes GitHub tokens to the github provider", async () => {
     const findings = await scanRepository(repo);
     expect(findings.every((f) => f.provider === "github")).toBe(true);
+  });
+
+  it("returns no findings for a clean repository, rather than failing", async () => {
+    // gitleaks writes an empty JSON array when it finds nothing. This distinguishes
+    // a genuinely clean repository from an unreadable report, which must raise.
+    const clean = join(workDir, "clean-repo");
+    mkdirSync(clean, { recursive: true });
+    execFileSync("git", ["init", "--quiet", "--initial-branch=main"], { cwd: clean });
+    writeFileSync(join(clean, "a.txt"), "nothing sensitive here");
+    execFileSync("git", ["add", "-A"], { cwd: clean });
+    execFileSync("git", ["-c", "user.email=t@t.t", "-c", "user.name=t", "commit", "-q", "-m", "clean"], {
+      cwd: clean,
+    });
+
+    await expect(scanRepository(clean)).resolves.toEqual([]);
   });
 
   it("rejects a path that is not a git repository", async () => {

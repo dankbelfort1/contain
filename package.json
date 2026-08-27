@@ -3,13 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.14" },
+  "engines": {
+    "node": ">=22.14"
+  },
   "description": "Secret-leak remediation agent. The agent earns information, not permissions.",
   "scripts": {
+    "setup": "node scripts/install-gitleaks.mjs",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "pretest": "node scripts/install-gitleaks.mjs",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "fixtures": "tsx src/fixtures/main.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

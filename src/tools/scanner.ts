@@ -7,7 +7,7 @@
  */
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -62,46 +62,63 @@ export async function scanRepository(repoPath: string): Promise<Finding[]> {
     throw new ScannerError(`Not a git repository: ${repo}`);
   }
 
-  const reportPath = join(tmpdir(), `contain-scan-${process.pid}-${Date.now()}.json`);
+  // mkdtemp creates the directory atomically with owner-only permissions. A
+  // predictable path in the shared temp directory would let a local user pre-create
+  // it as a symlink, which gitleaks would follow and truncate, and would also let two
+  // concurrent scans overwrite each other's report.
+  const reportDir = await mkdtemp(join(tmpdir(), "contain-scan-"));
+  const reportPath = join(reportDir, "report.json");
 
   try {
-    await execFileAsync(
-      resolveGitleaksPath(),
-      [
-        "git",
-        repo,
-        "--report-format", "json",
-        "--report-path", reportPath,
-        "--no-banner",
-        "--log-level", "error",
-        // Findings are the expected outcome, not a failure. Without this gitleaks
-        // exits 1 whenever it finds anything, which would look like a crash.
-        "--exit-code", "0",
-      ],
-      { maxBuffer: 32 * 1024 * 1024 },
-    );
-  } catch (cause) {
-    throw new ScannerError(
-      `gitleaks failed. Is it installed at ${resolveGitleaksPath()}? Cause: ${String(cause)}`,
-    );
-  }
+    try {
+      await execFileAsync(
+        resolveGitleaksPath(),
+        [
+          "git",
+          repo,
+          "--report-format", "json",
+          "--report-path", reportPath,
+          "--no-banner",
+          "--log-level", "error",
+          // Findings are the expected outcome, not a failure. Without this gitleaks
+          // exits 1 whenever it finds anything, which would look like a crash.
+          "--exit-code", "0",
+        ],
+        { maxBuffer: 32 * 1024 * 1024 },
+      );
+    } catch (cause) {
+      throw new ScannerError(
+        `gitleaks failed to run. Is it installed at ${resolveGitleaksPath()}? ` +
+          `Run \`npm run setup\` to fetch it. Cause: ${String(cause)}`,
+      );
+    }
 
-  let raw: string;
-  try {
-    raw = await readFile(reportPath, "utf8");
-  } catch {
-    // gitleaks omits the report file entirely when it finds nothing.
-    return [];
-  }
+    let raw: string;
+    try {
+      raw = await readFile(reportPath, "utf8");
+    } catch (cause) {
+      // gitleaks writes the report file even when it finds nothing - an empty JSON
+      // array. So an unreadable report after a successful run means something went
+      // wrong, not that the repository is clean. Returning [] here would turn a
+      // permissions or filesystem failure into a silent "no secrets found", which is
+      // the most dangerous way this tool could fail.
+      throw new ScannerError(
+        `gitleaks exited successfully but its report could not be read: ${String(cause)}`,
+      );
+    }
 
-  try {
-    const parsed = JSON.parse(raw) as GitleaksFinding[] | null;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map(toFinding).sort(byStableOrder);
-  } catch (cause) {
-    throw new ScannerError(`Could not parse the gitleaks report: ${String(cause)}`);
+    try {
+      const parsed = JSON.parse(raw) as GitleaksFinding[] | null;
+      if (!Array.isArray(parsed)) {
+        throw new ScannerError(`Expected a JSON array from gitleaks, got ${typeof parsed}`);
+      }
+      return parsed.map(toFinding).sort(byStableOrder);
+    } catch (cause) {
+      if (cause instanceof ScannerError) throw cause;
+      throw new ScannerError(`Could not parse the gitleaks report: ${String(cause)}`);
+    }
   } finally {
-    await rm(reportPath, { force: true });
+    await rm(reportDir, { recursive: true, force: true });
   }
 }
 
