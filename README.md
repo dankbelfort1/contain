@@ -1,6 +1,9 @@
-# DetermAIne
+# ContAIn
 
 **A secret-leak remediation agent you would trust near production.**
+
+*Contain* is the incident-response term for the phase where you stop a compromised
+credential doing further damage. It is also what we do to the agent.
 
 > The agent earns information, not permissions.
 > It investigates progressively, but destructive authority stays behind a human trust boundary.
