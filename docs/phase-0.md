@@ -30,6 +30,27 @@ GitHub returns `202` unconditionally and revokes asynchronously. Our fake token 
 same response a real credential would. The audit trail therefore never records "revoked"
 on the strength of the status code; it records the result of a re-run verification.
 
+### Verified against a real credential
+
+The checks above used a fake token. The path was later confirmed end to end against a
+genuine classic PAT on the throwaway account, with a second live token on the *same*
+account held as a control:
+
+    BEFORE  tokenB=200  tokenA=200
+    revoke call -> http=202
+    poll 1: tokenB=401 -> REVOKED
+    AFTER   tokenB=401  tokenA=200
+
+Three things this establishes:
+
+- Revocation is real and effectively immediate. Despite the asynchronous `202`, the
+  token was already dead on the first re-check.
+- **Revocation is scoped to the credential, not the account.** Token A survived
+  untouched despite sharing an account and an identical scope set with token B. The
+  agent kills one key, not the user.
+- The re-verification pattern works as designed. We observed the flip to `401` rather
+  than trusting the `202`, which is exactly what the audit trail will record.
+
 ### Constraint 3 — the endpoint is unauthenticated, global, and irreversible
 
 It accepts any token from anyone, and GitHub cannot reactivate a revoked credential.
