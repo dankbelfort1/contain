@@ -64,7 +64,7 @@ No Docker, WSL, or podman on the build machine, and TrueForge supports exactly o
 sandbox provider (Daytona, cloud, API key). A restricted-subprocess prototype was built
 and exercised:
 
-    1) hello-world in sandbox:      {'result': {'hello': 'DetermAIne'}, 'exit_code': 0}
+    1) hello-world in sandbox:      {'result': {'hello': 'ContAIn'}, 'exit_code': 0}
     2) read-only GitHub verify:     {'status': 'DEAD', 'http': 401}   <- real API call
     3) exfiltration to example.com: BLOCKED - DNS blocked, allowlist=['api.github.com']
     4) 30s sleep, 3s timeout:       TIMEOUT at 3.0s
