@@ -151,12 +151,24 @@ export class AuditTrail {
    * everything had happened twice.
    */
   async save(path: string): Promise<void> {
-    const pending = this.#events.slice(this.#savedUpTo);
+    // Chained rather than concurrent. Two overlapping saves would both read the same
+    // offset, and the second would overwrite the first's bookkeeping.
+    this.#writing = this.#writing.then(() => this.#appendPending(path));
+    await this.#writing;
+  }
+
+  async #appendPending(path: string): Promise<void> {
+    // Capture the boundary before writing, and advance to exactly that. Advancing to
+    // the event count afterwards marked anything recorded during the write as saved
+    // without ever writing it, so those events were dropped from the trail for good.
+    const upTo = this.#events.length;
+    const pending = this.#events.slice(this.#savedUpTo, upTo);
     if (pending.length === 0) return;
+
     await mkdir(dirname(path), { recursive: true });
     const lines = pending.map((e) => JSON.stringify(e)).join("\n");
     await appendFile(path, lines + "\n", "utf8");
-    this.#savedUpTo = this.#events.length;
+    this.#savedUpTo = upTo;
   }
 
   // Convenience recorders. They exist so the redaction happens in one place rather

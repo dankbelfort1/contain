@@ -238,6 +238,30 @@ describe("audit trail", () => {
     }
   });
 
+  it("does not drop an event recorded while a save is in flight", async () => {
+    // The offset used to advance to the event count after the write, so anything
+    // recorded during it was marked saved without ever being written, and every later
+    // save skipped it permanently.
+    const dir = mkdtempSync(join(tmpdir(), "contain-audit-race-"));
+    const file = join(dir, "trail.jsonl");
+    try {
+      const trail = new AuditTrail();
+      trail.recordFinding(finding("first"));
+
+      const saving = trail.save(file);
+      // Recorded after the save started, before it finished.
+      trail.recordFinding(finding("during"));
+      await saving;
+      await trail.save(file);
+
+      const lines = readFileSync(file, "utf8").trim().split("\n");
+      expect(lines).toHaveLength(2);
+      expect(lines.join(" ")).toContain("during");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("emits one JSON object per line", () => {
     const trail = new AuditTrail();
     const at = "2026-08-27T10:00:00Z";
