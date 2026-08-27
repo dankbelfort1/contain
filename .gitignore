@@ -16,3 +16,6 @@ bin/
 # Generated demo repo with real secrets planted in history. Never commit.
 # Root-anchored: a bare "fixtures/" would also match src/fixtures/, which is source.
 /fixtures/
+
+# Built UI output
+dist-ui/
