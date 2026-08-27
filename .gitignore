@@ -1,0 +1,14 @@
+node_modules/
+dist/
+*.log
+
+# Never commit real credentials. Fixtures read tokens from here.
+.env
+.env.local
+
+# Scan output and audit logs contain secret values.
+audit/*.jsonl
+.scan-cache/
+
+# Scanner binaries are downloaded, not vendored.
+bin/
