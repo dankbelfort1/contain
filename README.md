@@ -176,13 +176,19 @@ covers, and is spent exactly once.
 
 - verification templates issue only `GET` or `HEAD`, and cannot reach the revoke endpoint
 - the sandbox blocks any host not on the allowlist, and blocks everything when the
-  allowlist is empty
+  allowlist is empty, including positional `connect(port, host)` calls, connections to a
+  literal IP that never touch DNS, and IPC paths
 - the sandbox does not inherit the host environment, so a template cannot read ambient
   credentials
 - revoke is unreachable without an approval, and in every refusal case **no request is
   sent at all**
 - an approval for a different finding, or a different credential value, is refused
 - with an approval, revoke fires exactly once even when retried
+- a policy cannot un-gate a destructive action, whatever it sets
+- a non-202 response is not reported as an attempted revocation, and confirmation
+  requires an observed transition from live to dead
+- text taken from the scanned repository cannot inject terminal control sequences into
+  the approval panel
 - dry run and replay never fire
 - no audit event can contain a raw credential
 - the same repository in the same state produces identical findings, statuses and plan
