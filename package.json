@@ -8,7 +8,7 @@
   },
   "description": "Secret-leak remediation agent. The agent earns information, not permissions.",
   "scripts": {
-    "setup": "node scripts/install-gitleaks.mjs",
+    "setup": "node scripts/install-gitleaks.mjs && node scripts/patch-kysely-windows.mjs",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "pretest": "node scripts/install-gitleaks.mjs",
@@ -22,7 +22,10 @@
     "ui": "tsx src/server/main.ts fixtures/leaky-service",
     "ui:dry": "tsx src/server/main.ts fixtures/leaky-service --dry-run",
     "ui:dev": "vite --config ui/vite.config.ts",
-    "ui:build": "vite build --config ui/vite.config.ts"
+    "ui:build": "vite build --config ui/vite.config.ts",
+    "trueforge": "node node_modules/@truefoundry/trueforge/dist/cli.js",
+    "trueforge:agent": "node scripts/create-trueforge-agent.mjs",
+    "trueforge:demo": "node scripts/run-trueforge-demo.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
