@@ -208,6 +208,52 @@ covers, and is spent exactly once.
 - no audit event can contain a raw credential
 - the same repository in the same state produces identical findings, statuses and plan
 
+## Qodo Code Review Evidence
+
+Every pull request in this repository was reviewed by Qodo before merge. Across 14 PRs
+it surfaced **48 findings**, and they were not cosmetic: several contradicted claims this
+README makes.
+
+**Representative PR: [#12, addressing the review findings](https://github.com/dankbelfort1/contain/pull/12)**
+
+The three that mattered most:
+
+- **The scanner reported "no secrets found" when it failed.** Any unreadable report,
+  from a permissions error to a disk fault, was converted into an empty finding list.
+  For a security tool that is the worst possible failure, because it looks like a clean
+  bill of health. It now refuses to report a result it is not sure of.
+- **The sandbox could be walked around.** The egress guard read only `args[0].host`, so
+  `net.connect(port, host)` went unchecked, and connecting to a literal IP skipped the
+  DNS hook entirely. The "network restricted to the provider endpoint" claim was false
+  until this was fixed. ([#12](https://github.com/dankbelfort1/contain/pull/12))
+- **A crafted commit message could repaint the approval panel.** Repository-derived text
+  reached the terminal unsanitised, so the gate could be made to display something other
+  than the action about to happen.
+
+**Follow-up review trail:** [#13](https://github.com/dankbelfort1/contain/pull/13) shows
+the full cycle. Qodo raised 7 findings, the fixes were pushed to the same PR, and it
+re-reviewed to zero. One of those findings was a regression I had introduced myself while
+fixing an earlier one: making an approval token optional let any local caller revoke a
+credential with no human decision, which was worse than the bug it replaced.
+
+[#14](https://github.com/dankbelfort1/contain/pull/14) works through the findings left
+open on earlier PRs, including one that undermined the core design: `/api/approve` did
+not require a plan, so a caller could scan, approve and revoke while skipping
+verification and the blast radius entirely. The human decision would have been made
+blind. Approval now requires a plan that proposes the action.
+
+**Deliberately not fixed**, with reasons rather than silence:
+
+- *Resolved IPs widen the allowlist.* Pre-resolving a hostname permits any host sharing
+  that address. Inherent to checking addresses, and the alternative leaks the hostname
+  to a DNS lookup we would then have to trust. Accepted and documented.
+- *Known secrets bypass audit validation.* The credential-shape check is a backstop, not
+  the mechanism. Redaction happens at the recorder; the scan exists to catch a new event
+  type that forgets to use it.
+- *Clients share investigation state.* True. This is a single-operator tool bound to
+  loopback, and per-session isolation would need an auth model it does not have. Stated
+  in `src/mcp/state.ts` rather than papered over.
+
 ## Documentation
 
 - [`docs/phase-0.md`](docs/phase-0.md) - the go/no-go findings that shaped the design

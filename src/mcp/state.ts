@@ -5,6 +5,12 @@
  * to verifications, an approval refers to a finding, and a revoke refers to both. This
  * holds that between calls.
  *
+ * One run at a time. The server holds a single RunState, so two clients connected at
+ * once would overwrite each other's findings and share an audit trail. That is a real
+ * limitation rather than an oversight: this is a single-operator tool bound to
+ * loopback, and multi-tenancy would mean per-session isolation and an auth model it
+ * does not have. Starting a new scan deliberately clears the previous run.
+ *
  * Credentials live here and nowhere else. They are never returned from a tool, never
  * written to the audit trail, and never sent to the model. The model works with
  * finding ids and masked values; the real value is looked up here at the moment it is

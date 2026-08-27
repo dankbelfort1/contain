@@ -142,6 +142,30 @@ export function createApiServer(options: ServerOptions): Server {
         const finding = session.state.finding(String(body.findingId));
         if (!finding) return json(404, { error: "unknown finding" });
 
+        // An approval is only meaningful if the person giving it saw what they were
+        // approving. Without this, a caller could scan, approve and revoke while
+        // skipping verification, the blast radius, and the plan entirely, which are
+        // the whole reason the decision is asked of a human rather than taken
+        // automatically.
+        const plan = session.state.plan();
+        if (!plan) {
+          return json(409, {
+            error:
+              "No plan has been built. Verify the findings and build the plan before approving, " +
+              "so the decision is made with the blast radius in view.",
+          });
+        }
+
+        const item = plan.items.find((i) => i.findingId === finding.id);
+        if (!item) {
+          return json(409, { error: "That finding is not in the current plan." });
+        }
+        if (!item.requiresApproval) {
+          return json(409, {
+            error: `The plan does not propose a destructive action for this finding (${item.action}), so there is nothing to approve.`,
+          });
+        }
+
         // Anything other than an explicit allow or deny is a bad request, not a
         // denial. Quietly recording a malformed call as a human decision would put
         // something in the audit trail that nobody actually said.

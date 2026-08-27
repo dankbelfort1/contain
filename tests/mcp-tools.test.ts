@@ -135,6 +135,7 @@ describe("tools never return a credential", () => {
 
 describe("the destructive tool refuses without approval", () => {
   it("throws and sends nothing when the approval token is unknown", async () => {
+    await tool("verify_credential").handler({ findingId: "f1" }, deps);
     await expect(
       tool("revoke_credential").handler({ findingId: "f1", approvalToken: "made-up" }, deps),
     ).rejects.toThrow(/not recognised/);
@@ -143,6 +144,7 @@ describe("the destructive tool refuses without approval", () => {
   });
 
   it("records the refusal, so the trail shows the agent was stopped", async () => {
+    await tool("verify_credential").handler({ findingId: "f1" }, deps);
     await expect(
       tool("revoke_credential").handler({ findingId: "f1", approvalToken: "made-up" }, deps),
     ).rejects.toThrow();
@@ -177,6 +179,22 @@ describe("the destructive tool refuses without approval", () => {
       statusBefore: "LIVE",
       statusAfter: "DEAD",
     });
+  });
+
+  it("refuses to revoke something nobody has verified", async () => {
+    // Without a verification there is no blast radius, so any approval upstream was
+    // given without the evidence that justifies it.
+    const grant = state.approvals.grant({
+      findingId: "f1",
+      secret: LIVE_SECRET,
+      decision: "allow",
+      grantedBy: "deep",
+    });
+
+    await expect(
+      tool("revoke_credential").handler({ findingId: "f1", approvalToken: grant.token }, deps),
+    ).rejects.toThrow(/has not been verified/);
+    expect(post).not.toHaveBeenCalled();
   });
 
   it("refuses a tokenless call when no gating harness is declared", async () => {
