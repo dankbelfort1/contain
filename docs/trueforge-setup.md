@@ -5,6 +5,14 @@ and demonstrates the gate firing inside TrueForge rather than only in our own CL
 
 Roughly 20 minutes. Both API keys are already in `.env`.
 
+Start with a normal install. On Windows this matters: TrueForge v0.1.4 cannot start
+without a one-line patch to Kysely, and `postinstall` applies it to the repository-local
+copy.
+
+```bash
+npm install
+```
+
 ## What we are proving
 
 That `require_approval_for_tools: ["@destructive"]` resolves from the annotations our MCP
@@ -40,10 +48,15 @@ Leave it running.
 Second terminal:
 
 ```bash
-npx @truefoundry/trueforge@latest
+npm run trueforge
 ```
 
 Local mode, SQLite, no login. It serves on `http://localhost:8790`.
+
+**Use this rather than `npx @truefoundry/trueforge`.** The npx copy is installed into a
+separate cache that the Windows patch has not touched, so on Windows it fails at startup
+with `Received protocol 'c:'` or similar. See the note at the end of
+[`trueforge-run.md`](trueforge-run.md).
 
 ## Step 3: connect Gemini
 
@@ -63,37 +76,21 @@ Then list its tools and confirm five appear. This is the moment to check that
 
 ## Step 5: create the agent
 
-The UI cannot set `require_approval_for_tools`; that field is API only. So create the
-agent over the API, using the spec in `src/agent/spec.ts`:
+The UI cannot set `require_approval_for_tools`; that field is API only, and it is the
+whole point. An agent built through the UI would have no gate.
 
 ```bash
-curl -X POST http://localhost:8790/v1/agents \
-  -H "content-type: application/json" \
-  -d @- <<'JSON'
-{
-  "name": "contain",
-  "model": { "name": "google-gemini/gemini-2.5-flash" },
-  "instructions": "<paste INSTRUCTIONS from src/agent/spec.ts>",
-  "mcp_servers": [
-    {
-      "name": "contain",
-      "enable_tools": ["@all"],
-      "require_approval_for_tools": ["@destructive"],
-      "preload": true
-    }
-  ],
-  "config": {
-    "sandbox": { "enabled": false },
-    "generative_ui": { "enabled": true },
-    "ask_user_questions": { "enabled": true },
-    "iteration_limit": 40
-  }
-}
-JSON
+node scripts/create-trueforge-agent.mjs
 ```
 
-Check the exact path against `https://trueforge.dev/api-reference/agents/create-an-agent`
-before running it; do not guess it.
+It posts to `POST /api/v1/agents` with the body wrapped in a `manifest` object, and exits
+non-zero if creation fails so a broken setup does not read as a working one.
+
+Both of those details were learned the hard way. The path is `/api/v1/agents`, not
+`/v1/agents`, and an unwrapped payload is rejected with
+`Unrecognized keys: "model", "instructions", "mcp_servers", "config"`. If TrueForge
+changes, read the running server's own document at `http://localhost:8790/api/v1/openapi.json`
+rather than guessing.
 
 Note `sandbox.enabled: false`. Our verification runs its own sandbox inside the MCP tool,
 so TrueForge does not need to provision one. Turn it on later only if adding Code Mode.
