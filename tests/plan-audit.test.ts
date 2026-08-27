@@ -168,7 +168,7 @@ describe("audit trail", () => {
   it.each([
     ["ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789"],
     ["github_pat_11ABCDEFG0abcdefghijklmnopqrstuvwxyz"],
-    ["AIzaSyDb2Cr6pX21OYVaWlWfS5xOreMfN9sS7Y"],
+    ["AIzaSykoVl2RyyXmfBWI469zMVGIvi1wWHKIm6H"],
   ])("detects %s as credential-shaped", (value) => {
     expect(() => assertNoSecrets(`{"x":"${value}"}`)).toThrow(AuditLeakError);
   });
