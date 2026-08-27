@@ -25,13 +25,13 @@ A human unlocks the one irreversible step.
 
     Discover -> Verify -> Assess blast radius -> Plan -> [HUMAN APPROVAL] -> Revoke -> Audit
 
-1. **Discover** — a real scanner (gitleaks) walks the repo and its full git history.
-2. **Verify** — a vetted, read-only template runs in a sandbox and calls the provider.
-3. **Assess** — for live keys, enumerate what the key can actually reach, read-only.
-4. **Plan** — one remediation item per finding, each with a stated reason.
-5. **Approve** — the agent stops. A human allows or denies. This is a hard stop.
-6. **Revoke** — one real API call, then re-verify to prove the key is dead.
-7. **Audit** — every step above recorded, start to finish.
+1. **Discover** - a real scanner (gitleaks) walks the repo and its full git history.
+2. **Verify** - a vetted, read-only template runs in a sandbox and calls the provider.
+3. **Assess** - for live keys, enumerate what the key can actually reach, read-only.
+4. **Plan** - one remediation item per finding, each with a stated reason.
+5. **Approve** - the agent stops. A human allows or denies. This is a hard stop.
+6. **Revoke** - one real API call, then re-verify to prove the key is dead.
+7. **Audit** - every step above recorded, start to finish.
 
 ## Where the trust boundary actually lives
 
@@ -61,7 +61,7 @@ We would rather state these than overclaim:
   template to run and fills in parameters. It does not write probe code. This is what
   makes live/dead classification reproducible.
 - **A successful revoke call does not prove revocation.** GitHub's endpoint returns
-  `202 Accepted` unconditionally and acts asynchronously — a fake token gets the same
+  `202 Accepted` unconditionally and acts asynchronously - a fake token gets the same
   response a real one does. So we never record "revoked" from the HTTP status. We
   re-run the read-only verification afterwards and record the observed flip to dead.
 

@@ -1,9 +1,9 @@
-# Phase 0 — go/no-go findings
+# Phase 0 - go/no-go findings
 
 Two things could have sunk this project late. Both were checked before any feature code
 was written. Both are green. The checks turned up four constraints that shaped the design.
 
-## 1. Revoke path — GREEN
+## 1. Revoke path - GREEN
 
 `POST https://api.github.com/credentials/revoke`, unauthenticated, body
 `{"credentials": [...]}`. Accepts `ghp_`, `github_pat_`, `gho_`, `ghu_`, `ghr_`.
@@ -14,17 +14,17 @@ Verified from this machine using a deliberately fake token, which revoked nothin
 | Check | Result |
 | --- | --- |
 | Unauthenticated POST, fake token | `202 Accepted`, empty body |
-| Same POST with an `Authorization` header | `401` — rejected |
-| `GET /user` with a dead token | `401` — our DEAD signal |
-| `X-OAuth-Scopes` on a live response | exposed — our blast-radius signal |
+| Same POST with an `Authorization` header | `401` - rejected |
+| `GET /user` with a dead token | `401` - our DEAD signal |
+| `X-OAuth-Scopes` on a live response | exposed - our blast-radius signal |
 
-### Constraint 1 — the revoke tool must send no `Authorization` header
+### Constraint 1 - the revoke tool must send no `Authorization` header
 
 The docs say authenticated requests return `403`; in practice a bad token returns `401`.
 Either way, authenticating breaks revocation. Non-obvious, and easy to reintroduce by
 sharing an HTTP client with the verification code. Covered by its own test.
 
-### Constraint 2 — the `202` proves nothing
+### Constraint 2 - the `202` proves nothing
 
 GitHub returns `202` unconditionally and revokes asynchronously. Our fake token got the
 same response a real credential would. The audit trail therefore never records "revoked"
@@ -51,14 +51,14 @@ Three things this establishes:
 - The re-verification pattern works as designed. We observed the flip to `401` rather
   than trusting the `202`, which is exactly what the audit trail will record.
 
-### Constraint 3 — the endpoint is unauthenticated, global, and irreversible
+### Constraint 3 - the endpoint is unauthenticated, global, and irreversible
 
 It accepts any token from anyone, and GitHub cannot reactivate a revoked credential.
 Nothing about the endpoint stops us revoking an unrelated third party's key. That is
 enforced on our side instead: a token is only eligible for revocation if its exact value
 appeared in this run's findings, was verified LIVE, and is covered by the approval.
 
-## 2. Sandbox — GREEN
+## 2. Sandbox - GREEN
 
 No Docker, WSL, or podman on the build machine, and TrueForge supports exactly one
 sandbox provider (Daytona, cloud, API key). A restricted-subprocess prototype was built
@@ -72,7 +72,7 @@ and exercised:
 Clean environment, own working directory, wall-clock timeout, captured output,
 writes blocked outside the sandbox root, egress restricted to a pre-resolved allowlist.
 
-### Constraint 4 — TrueForge does not expose Daytona's firewall
+### Constraint 4 - TrueForge does not expose Daytona's firewall
 
 Daytona itself supports `domainAllowList`, `networkAllowList`, and `networkBlockAll`,
 which would give kernel-level egress control. But TrueForge's entire
@@ -87,7 +87,7 @@ organisation policy wins regardless.
 **Decision:** keep TrueForge provisioning the sandbox and enforce the allowlist inside
 it, using the guard proven above ported to Node. This works on any Daytona tier, keeps
 the sandbox visibly the harness's own (`sandbox.created` appears in the turn stream),
-and costs us kernel-level enforcement — which the README states plainly rather than
+and costs us kernel-level enforcement - which the README states plainly rather than
 glossing over.
 
 ## Harness findings
