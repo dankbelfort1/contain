@@ -153,6 +153,20 @@ async function centreGate(page) {
   await page.waitForTimeout(250);
 }
 
+/**
+ * Shoot the top of the page.
+ *
+ * Used for any screen whose hotspot sits on one of the action buttons. Positioning on
+ * the results below cropped the buttons to a sliver, and a hotspot cannot be placed on
+ * a control that is not in frame.
+ */
+async function fromTop(page, name) {
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${OUT}/${name}.png`, fullPage: false });
+  console.log(`  ${name}.png`);
+}
+
 async function click(page, label) {
   await page.getByRole("button", { name: label }).click();
 }
@@ -177,7 +191,7 @@ async function main() {
 
   await click(page, "1. Scan repository");
   await page.waitForSelector("table", { timeout: 30_000 });
-  await clipTo(page, "Findings", "02-findings");
+  await fromTop(page, "02-findings");
 
   await click(page, "2. Verify in sandbox");
   // Wait for the results heading, not for any element containing the words. A plain
@@ -186,7 +200,7 @@ async function main() {
   await page
     .getByRole("heading", { name: /blast radius . what the live credential/i })
     .waitFor({ timeout: 90_000 });
-  await clipTo(page, "Findings", "03-verified");
+  await fromTop(page, "03-verified");
   await clipTo(page, "Blast radius", "04-blast-radius");
 
   await click(page, "3. Build plan");
