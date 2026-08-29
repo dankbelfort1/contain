@@ -19,6 +19,19 @@ import { chromium } from "playwright";
 const BASE = process.env.CONTAIN_UI_URL ?? "http://localhost:8910";
 const OUT = "ui-screens";
 
+/**
+ * Capture the confirmed-dead screen, which needs a real revocation.
+ *
+ * Off by default. The dry-run capture ends on "Not confirmed. Dry run. No request was
+ * sent.", which is honest but useless in a demo, so that screen is skipped rather than
+ * shipped misleading. Pass --real against a server started WITHOUT --dry-run to get the
+ * genuine one, and understand that doing so destroys the credential permanently.
+ *
+ * The natural moment for that is while recording the demo video, when the token is
+ * being spent anyway.
+ */
+const REAL = process.argv.includes("--real");
+
 // A common laptop viewport. Deliberately not a desktop size: the demo is watched on a
 // laptop, and a wider capture would shrink the type in the prototype.
 const VIEWPORT = { width: 1440, height: 900 };
@@ -120,10 +133,14 @@ async function main() {
   await centreGate(page);
   await screen(page, "07-approved");
 
-  await click(page, "Revoke now");
-  await page.waitForTimeout(2500);
-  await centreGate(page);
-  await screen(page, "08-confirmed");
+  if (REAL) {
+    await click(page, "Revoke now");
+    await page.waitForTimeout(3000);
+    await centreGate(page);
+    await screen(page, "08-confirmed");
+  } else {
+    console.log("  08-confirmed.png          skipped (needs --real, which spends a token)");
+  }
 
   await page.evaluate(() => {
     const heads = [...document.querySelectorAll("h2")];
