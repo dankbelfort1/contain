@@ -45,33 +45,59 @@ async function screen(page, name) {
   console.log(`  ${name}.png`);
 }
 
-/** Put a section at the top of the viewport, with a little breathing room above it. */
-async function focus(page, selector, offset = 40) {
-  await page.evaluate(
-    ({ sel, off }) => {
-      const el = document.querySelector(sel);
-      if (!el) return;
-      const top = el.getBoundingClientRect().top + window.scrollY - off;
-      window.scrollTo({ top, behavior: "instant" });
-    },
-    { sel: selector, off: offset },
-  );
-  await page.waitForTimeout(250);
+/**
+ * Screenshot a viewport-sized window positioned over a section, using a clip rather
+ * than a scroll.
+ *
+ * Scrolling cannot put a section at the top of the screen when it sits near the bottom
+ * of the page: the browser clamps, and the capture ends up showing whatever is above
+ * it. That is how the audit trail screen came out showing the approval panel and its
+ * dry-run message instead.
+ */
+async function clipTo(page, headingText, name) {
+  const y = await page.evaluate((text) => {
+    // Case-insensitive. The headings are uppercased by CSS, so the DOM text reads
+    // "Audit trail" while the screen reads "AUDIT TRAIL". Matching the rendered form
+    // found nothing, and the fallback clipped from the top of the page.
+    const wanted = text.toLowerCase();
+    const heading = [...document.querySelectorAll("h2")].find((h) =>
+      h.textContent?.toLowerCase().includes(wanted),
+    );
+    if (!heading) throw new Error(`no heading matching "${text}"`);
+    return heading.getBoundingClientRect().top + window.scrollY - 40;
+  }, headingText);
+
+  // Give the page room below the fold, or a clip that runs past the last element comes
+  // back short and the screen no longer matches the others.
+  await page.evaluate(() => {
+    document.body.style.paddingBottom = "1000px";
+  });
+
+  await page.screenshot({
+    path: `${OUT}/${name}.png`,
+    fullPage: true,
+    clip: { x: 0, y, width: VIEWPORT.width, height: VIEWPORT.height },
+  });
+
+  await page.evaluate(() => {
+    document.body.style.paddingBottom = "";
+  });
+  console.log(`  ${name}.png`);
 }
 
 /**
  * Centre the approval panel in the viewport, so it sits alone on the screen.
  *
  * Found by its heading text rather than by class: the stage rail's "Human approval"
- * step carries the same class name and appears first in the document, so a plain
- * class selector cropped the wrong element.
+ * step carries the same class name and appears first in the document, so a plain class
+ * selector cropped the wrong element.
  */
 async function centreGate(page) {
   await page.evaluate(() => {
     const el = [...document.querySelectorAll("div.gate")].find((n) =>
       n.textContent?.includes("HUMAN APPROVAL REQUIRED"),
     );
-    if (!el) return;
+    if (!el) throw new Error("approval panel not found");
     const box = el.getBoundingClientRect();
     window.scrollTo({
       top: box.top + window.scrollY - (window.innerHeight - box.height) / 2,
@@ -105,25 +131,21 @@ async function main() {
 
   await click(page, "1. Scan repository");
   await page.waitForSelector("table", { timeout: 30_000 });
-  await focus(page, "table");
-  await screen(page, "02-findings");
+  await clipTo(page, "Findings", "02-findings");
 
   await click(page, "2. Verify in sandbox");
-  await page.waitForSelector("text=BLAST RADIUS", { timeout: 90_000 });
-  await focus(page, "table");
-  await screen(page, "03-verified");
-
-  await focus(page, ".blast", 120);
-  await screen(page, "04-blast-radius");
+  // Wait for the results heading, not for any element containing the words. A plain
+  // text selector matched the stage rail's "Blast radius" step, which is on screen from
+  // the start, so the script raced ahead before verification had finished.
+  await page
+    .getByRole("heading", { name: /blast radius . what the live credential/i })
+    .waitFor({ timeout: 90_000 });
+  await clipTo(page, "Findings", "03-verified");
+  await clipTo(page, "Blast radius", "04-blast-radius");
 
   await click(page, "3. Build plan");
   await page.waitForSelector(GATE, { timeout: 30_000 });
-  await page.evaluate(() => {
-    const heads = [...document.querySelectorAll("h2")];
-    const plan = heads.find((h) => h.textContent?.includes("REMEDIATION PLAN"));
-    if (plan) window.scrollTo({ top: plan.getBoundingClientRect().top + window.scrollY - 40 });
-  });
-  await screen(page, "05-plan");
+  await clipTo(page, "REMEDIATION PLAN", "05-plan");
 
   await centreGate(page);
   await screen(page, "06-the-gate");
@@ -142,12 +164,7 @@ async function main() {
     console.log("  08-confirmed.png          skipped (needs --real, which spends a token)");
   }
 
-  await page.evaluate(() => {
-    const heads = [...document.querySelectorAll("h2")];
-    const trail = heads.find((h) => h.textContent?.includes("AUDIT TRAIL"));
-    if (trail) window.scrollTo({ top: trail.getBoundingClientRect().top + window.scrollY - 40 });
-  });
-  await screen(page, "09-audit-trail");
+  await clipTo(page, "AUDIT TRAIL", "09-audit-trail");
 
   await browser.close();
   console.log(`\n9 screens at ${VIEWPORT.width}x${VIEWPORT.height} (2x) in ${OUT}/`);
