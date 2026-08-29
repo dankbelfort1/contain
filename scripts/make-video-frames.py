@@ -205,9 +205,98 @@ def frame_04():
     return img, "04-end-card"
 
 
+def frame_05():
+    """Architecture. The mechanism the whole project rests on, in one screen."""
+    img, d = frame(DEEP)
+    eyebrow(d, MARGIN, px(140), "architecture")
+    y = block(d, MARGIN, px(210), [("The gate is in the manifest,", PAPER)],
+              f(DISPLAY, 82), content_width(), 90)
+    block(d, MARGIN, y, [("not in the code.", STOP)], f(DISPLAY, 82), content_width(), 90)
+
+    tools = [
+        ("scan_repository", "read-only", MUTE),
+        ("verify_credential", "read-only", MUTE),
+        ("build_remediation_plan", "read-only", MUTE),
+        ("read_audit_trail", "read-only", MUTE),
+        ("revoke_credential", "DESTRUCTIVE", STOP),
+    ]
+    top, row_h = px(500), px(84)
+    for i, (name, tag, colour) in enumerate(tools):
+        ry = top + i * row_h
+        destructive = colour is STOP
+        if destructive:
+            rounded(d, (MARGIN - px(20), ry - px(14),
+                        MARGIN + px(900), ry + px(60)), 8, outline=STOP, width=2)
+        d.text((MARGIN, ry), name, font=f(MONO_B, 40), fill=PAPER if destructive else MUTE)
+        d.text((MARGIN + px(620), ry + px(4)), tag,
+               font=f(BODY_B if destructive else BODY, 34), fill=colour)
+
+    y = top + len(tools) * row_h + px(70)
+    d.text((MARGIN, y), 'require_approval_for_tools: ["@destructive"]',
+           font=f(MONO_B, 38), fill=SIGNAL)
+    block(d, MARGIN, y + px(70),
+          [("TrueForge resolves that selector from the annotations above. "
+            "There is no approval branch in our code to delete.", MUTE)],
+          f(BODY, 36), content_width(), 52)
+    return img, "05-architecture"
+
+
+def frame_06():
+    """The stack, with what each piece is actually for."""
+    img, d = frame(DEEP)
+    eyebrow(d, MARGIN, px(140), "tech stack")
+    block(d, MARGIN, px(210), [("Every piece doing one job.", PAPER)],
+          f(DISPLAY, 82), content_width(), 90)
+
+    stack = [
+        ("TrueForge", "agent harness, tool approvals"),
+        ("MCP", "how the tools are published"),
+        ("Gemini 2.5 Flash", "the model, on the free tier"),
+        ("gitleaks", "detection, wrapped not rewritten"),
+        ("Node sandbox", "isolated execution, egress allowlist"),
+        ("TypeScript + React", "the loop and the interface"),
+        ("Qodo", "review on every pull request"),
+        ("Playwright + vitest", "123 tests"),
+    ]
+    top, row_h = px(420), px(76)
+    for i, (name, role) in enumerate(stack):
+        ry = top + i * row_h
+        d.text((MARGIN, ry), name, font=f(BODY_B, 40), fill=PAPER)
+        d.text((MARGIN + px(560), ry + px(3)), role, font=f(BODY, 34), fill=MUTE)
+    return img, "06-stack"
+
+
+def frame_07():
+    """What broke. The most honest thing in the deck, and the most interesting."""
+    img, d = frame(DEEP)
+    eyebrow(d, MARGIN, px(140), "what we got wrong")
+    block(d, MARGIN, px(210), [("62 findings from Qodo.", PAPER)],
+          f(DISPLAY, 82), content_width(), 90)
+
+    lessons = [
+        ("The scanner reported clean when it crashed.",
+         "Any unreadable report became an empty finding list. For a security tool that is "
+         "the worst failure: it looks exactly like good news."),
+        ("The sandbox could be walked around.",
+         "Connecting to a literal IP skipped the DNS check entirely. Our network-restricted "
+         "claim was false until it was fixed."),
+        ("One of my fixes was worse than the bug.",
+         "Making an approval optional let any local caller revoke with no human at all. "
+         "Qodo caught that too."),
+    ]
+    y = px(400)
+    for title, detail in lessons:
+        d.text((MARGIN, y), title, font=f(BODY_B, 42), fill=STOP)
+        y = block(d, MARGIN, y + px(62), [(detail, MUTE)], f(BODY, 34),
+                  content_width() - px(120), 48)
+        y += px(46)
+    return img, "07-what-broke"
+
+
 def main() -> None:
     os.makedirs(OUT, exist_ok=True)
-    for build in (frame_01, frame_02, frame_03, frame_04):
+    for build in (frame_01, frame_02, frame_03, frame_04,
+                  frame_05, frame_06, frame_07):
         img, name = build()
         path = os.path.join(OUT, f"{name}.png")
         img.save(path, "PNG")
