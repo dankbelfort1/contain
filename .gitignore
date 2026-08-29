@@ -19,3 +19,6 @@ bin/
 
 # Built UI output
 dist-ui/
+
+# Generated video frames. Rebuild with: python scripts/make-video-frames.py
+video-frames/
