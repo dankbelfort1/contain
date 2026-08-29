@@ -254,6 +254,33 @@ blind. Approval now requires a plan that proposes the action.
   loopback, and per-session isolation would need an auth model it does not have. Stated
   in `src/mcp/state.ts` rather than papered over.
 
+## How this was built
+
+An AI coding assistant was used throughout, for implementation, tests, and documentation.
+Disclosed here because the hackathon rules require it.
+
+What that did and did not cover:
+
+- **Every technical decision was checked against primary sources rather than assumed.**
+  The GitHub revocation path, the TrueForge annotation mechanism, and Daytona's network
+  controls were each read from the vendor's own documentation and then verified against a
+  live API before anything was built on them. `docs/phase-0.md` records what those checks
+  returned, including the two findings that changed the design.
+- **Claims in this README were tested, not asserted.** Where a claim turned out to be
+  false, it is recorded rather than quietly corrected: the sandbox section says plainly
+  that its network restriction could be walked around until a review caught it.
+- **62 review findings were worked through individually**, each either fixed with a test
+  or dismissed with a stated reason. Two of them were regressions introduced while fixing
+  earlier ones.
+- **Direction, scope, and every consequential judgement call were human.** What to build,
+  what to leave out, which risks were acceptable, which credentials were safe to destroy,
+  and when the honest answer was "this does not work yet".
+
+The reasoning behind the significant decisions is written down rather than left implicit:
+`docs/phase-0.md` for why the design is shaped this way, `docs/trueforge-run.md` for what
+was actually observed when it ran, and the commit messages for why individual changes were
+made.
+
 ## Documentation
 
 - [`docs/phase-0.md`](docs/phase-0.md) - the go/no-go findings that shaped the design
