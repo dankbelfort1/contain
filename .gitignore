@@ -25,3 +25,6 @@ video-frames/
 
 # Captured UI screens. Rebuild with: npm run screens
 ui-screens/
+
+# Assembled upload set. Rebuild from video-frames/ and ui-screens/.
+demo-upload/
