@@ -22,3 +22,6 @@ dist-ui/
 
 # Generated video frames. Rebuild with: python scripts/make-video-frames.py
 video-frames/
+
+# Captured UI screens. Rebuild with: npm run screens
+ui-screens/
