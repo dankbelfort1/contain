@@ -186,14 +186,22 @@ def frame_03():
 
 
 def frame_04():
-    """Closes on the thesis and the repository."""
+    """Closes on the thesis, the repository, and the stack it was built on."""
     img, d = frame(VOID)
-    wordmark(d, MARGIN, px(330), 170)
-    y = block(d, MARGIN, px(610), [("Earns information,", PAPER)],
+    wordmark(d, MARGIN, px(300), 170)
+    y = block(d, MARGIN, px(580), [("Earns information,", PAPER)],
               f(DISPLAY, 106), content_width(), 116)
     y = block(d, MARGIN, y, [("not permissions.", STOP)], f(DISPLAY, 106), content_width(), 116)
-    runs(d, MARGIN, y + px(70), [("github.com/dankbelfort1/contain", SIGNAL)],
-         f(MONO_B, 38), tracking=2)
+
+    y += px(64)
+    runs(d, MARGIN, y, [("github.com/dankbelfort1/contain", SIGNAL)], f(MONO_B, 38), tracking=2)
+
+    # The sign-off. Credits the harness and the reviewer, both of whom are reading.
+    y += px(72)
+    runs(d, MARGIN, y,
+         [("Built on ", MUTE), ("TrueForge", PAPER),
+          ("   .   ", MUTE), ("Reviewed by ", MUTE), ("Qodo", PAPER)],
+         f(BODY, 40))
     return img, "04-end-card"
 
 
