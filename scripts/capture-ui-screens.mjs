@@ -92,6 +92,52 @@ async function clipTo(page, headingText, name) {
  * step carries the same class name and appears first in the document, so a plain class
  * selector cropped the wrong element.
  */
+/**
+ * Fill the frame with one section, on its own.
+ *
+ * The audit trail is shorter than the viewport and sits at the end of the page, so both
+ * scrolling and centring left most of the frame empty. This lifts a copy of the section
+ * onto a full-screen backdrop instead, which gives it even margins and reads as a
+ * deliberate slide rather than as the bottom of a page.
+ */
+async function spotlight(page, headingText, name) {
+  await page.evaluate(
+    ({ text, ground }) => {
+      const wanted = text.toLowerCase();
+      const heading = [...document.querySelectorAll("h2")].find((h) =>
+        h.textContent?.toLowerCase().includes(wanted),
+      );
+      if (!heading) throw new Error(`no heading matching "${text}"`);
+
+      const section = heading.closest("section") ?? heading.parentElement;
+      const holder = document.createElement("div");
+      holder.id = "contain-spotlight";
+      holder.style.cssText = [
+        "position:fixed",
+        "inset:0",
+        "display:flex",
+        "align-items:center",
+        "justify-content:center",
+        `background:${ground}`,
+        "z-index:9999",
+      ].join(";");
+
+      const copy = section.cloneNode(true);
+      copy.style.width = `${section.getBoundingClientRect().width}px`;
+      holder.appendChild(copy);
+      document.body.appendChild(holder);
+    },
+    { text: headingText, ground: "#0d1117" },
+  );
+
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${OUT}/${name}.png`, fullPage: false });
+  await page.evaluate(() => {
+    document.getElementById("contain-spotlight")?.remove();
+  });
+  console.log(`  ${name}.png`);
+}
+
 async function centreGate(page) {
   await page.evaluate(() => {
     const el = [...document.querySelectorAll("div.gate")].find((n) =>
@@ -164,7 +210,7 @@ async function main() {
     console.log("  08-confirmed.png          skipped (needs --real, which spends a token)");
   }
 
-  await clipTo(page, "AUDIT TRAIL", "09-audit-trail");
+  await spotlight(page, "Audit trail", "09-audit-trail");
 
   await browser.close();
   console.log(`\n9 screens at ${VIEWPORT.width}x${VIEWPORT.height} (2x) in ${OUT}/`);
